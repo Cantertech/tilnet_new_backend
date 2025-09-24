@@ -240,12 +240,17 @@ CSRF_TRUSTED_ORIGINS = [
     "https://healthcheck.railway.app",
     "https://*.railway.app",
     "https://*.up.railway.app",
+    "https://tilneett.netlify.app",
+    "https://tilnet.app",
+    "https://www.tilnet.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
 ]
 # Application definition
 INSTALLED_APPS = [
@@ -369,6 +374,9 @@ ALLOWED_HOSTS = [
     "healthcheck.railway.app",  # Railway health check domain
     ".railway.app",  # All Railway domains
     ".up.railway.app",  # All Railway domains
+    "tilneett.netlify.app",  # Current Netlify domain
+    "tilnet.app",  # Your main domain
+    "www.tilnet.app",  # WWW subdomain
 ]
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False').lower() == 'true'
@@ -381,6 +389,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",  # Additional Vite port
     "http://127.0.0.1:5174",
+    "http://localhost:5175",  # Current Vite port
+    "http://127.0.0.1:5175",
+    "https://tilneett.netlify.app",  # Current Netlify domain
+    "https://tilnet.app",  # Your main domain
+    "https://www.tilnet.app",  # WWW subdomain
 ]
 
 # Allow credentials to be sent with requests
