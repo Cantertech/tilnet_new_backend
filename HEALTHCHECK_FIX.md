@@ -119,3 +119,6 @@ The simplified startup script should resolve the health check issues by:
 
 The app should now start successfully and pass Railway's health checks! 🚀
 
+
+
+

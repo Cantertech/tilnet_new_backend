@@ -109,3 +109,6 @@ Starting Gunicorn server on port 8080...
 
 The deployment should now work perfectly with full WeasyPrint functionality and proper port handling! 🎉
 
+
+
+

@@ -47,64 +47,7 @@ from accounts.models import  SubscriptionPlan, UserSubscription # Import your mo
 from datetime import timedelta
 from django.utils import timezone
 
-def activate_user_subscription(user_instance, subscription_plan, received_amount_ghs, reference):
-    """
-    Activates or updates a user's subscription based on the selected plan.
-    Respects unused limits unless the subscription has expired.
-    """
-    print(f"[{reference}] Activating subscription for user {user_instance.id} with plan '{subscription_plan.name}'...")
-
-    try:
-        user_sub, created = UserSubscription.objects.get_or_create(user=user_instance)
-        now = timezone.now()
-
-        # Common updates
-        user_sub.plan = subscription_plan
-        user_sub.payment_status = 'Paid'
-        user_sub.is_active = True
-        user_sub.is_trial_active = False
-
-        if subscription_plan.duration_in_days > 0:
-            # Time-based plan (e.g., Free, Basic, Contractor)
-            if user_sub.end_date and user_sub.end_date > now:
-                # Extend current subscription from end_date, usage remains untouched
-                user_sub.end_date += timedelta(days=subscription_plan.duration_in_days)
-                print(f"[{reference}] Subscription extended. Usage preserved.")
-            else:
-                # Plan expired or no end_date – reset usage and start fresh
-                if not created: # Only update start_date if it's a new subscription or explicitly needs resetting
-                    user_sub.start_date = now
-                user_sub.end_date = now + timedelta(days=subscription_plan.duration_in_days)
-                user_sub.projects_created = 0
-                user_sub.three_d_views_used = 0
-                user_sub.manual_estimates_used = 0
-                print(f"[{reference}] Subscription renewed. Usage counters reset.")
-
-            user_sub.project_limit = subscription_plan.project_limit
-            user_sub.three_d_views_limit = subscription_plan.three_d_view_limit
-            user_sub.manual_estimate_limit = subscription_plan.manual_estimate_limit
-
-        elif subscription_plan.name == 'Pay-Per-Use':
-            user_sub.project_limit += subscription_plan.project_limit
-            user_sub.three_d_views_limit += subscription_plan.three_d_view_limit
-            user_sub.manual_estimate_limit += subscription_plan.manual_estimate_limit
-            print(f"[{reference}] Pay-Per-Use plan purchased. Limits incremented.")
-
-        elif subscription_plan.name == 'Add-On Pack':
-            user_sub.three_d_views_limit += subscription_plan.three_d_view_limit
-            user_sub.manual_estimate_limit += subscription_plan.manual_estimate_limit
-            print(f"[{reference}] Add-On Pack applied. Extra features added.")
-
-        else:
-            print(f"[{reference}] Unrecognized plan: {subscription_plan.name} (ID: {subscription_plan.id})")
-
-        user_sub.save()
-        print(f"[{reference}] Subscription for user {user_instance.email} saved.")
-        return True
-
-    except Exception as e:
-        print(f"[{reference}] Error activating subscription for user {user_instance.email}: {e}")
-        return False
+# Removed custom activate_user_subscription function - now using accounts.models.UserSubscription.upgrade_or_renew_subscription method
 
 
 # New function to process successful payments
@@ -162,11 +105,13 @@ def process_successful_payment(payment_record: PaymentTransaction, paystack_data
             # Depending on business logic, this might be a critical error or just a log
             return False
 
-        if activate_user_subscription(user_instance, matched_plan, received_amount_ghs, reference):
+        try:
+            user_sub, created = UserSubscription.objects.get_or_create(user=user_instance)
+            user_sub.upgrade_or_renew_subscription(matched_plan, payment_record)
             print(f"[{reference}] User {user_instance.email} subscription for '{matched_plan.name}' successfully processed.")
             return True
-        else:
-            print(f"[{reference}] Failed to activate subscription for user {user_instance.email}.")
+        except Exception as e:
+            print(f"[{reference}] Failed to activate subscription for user {user_instance.email}: {e}")
             return False
 
     except PaymentTransaction.DoesNotExist:
@@ -639,33 +584,9 @@ class VerifyPaystackPaymentAPIView(APIView):
                         }, status=200) # Still 200, as Paystack payment was success.
 
                     user_sub, created = UserSubscription.objects.get_or_create(user=request.user)
-                    now = timezone.now()
-
-                    user_sub.plan = matched_plan
-                    user_sub.payment_status = 'Paid'
-                    user_sub.is_active = True
-                    user_sub.is_trial_active = False # End trial if a paid subscription is made
-                    user_sub.last_payment = payment_record # Link to the payment transaction
-
-                    # Determine the new end date
-                    if user_sub.end_date and user_sub.end_date > now:
-                        # Extend current subscription from its existing end_date
-                        user_sub.end_date += timezone.timedelta(days=matched_plan.duration_in_days)
-                    else:
-                        # If expired or no existing end_date, start from now
-                        user_sub.start_date = now
-                        user_sub.end_date = now + timezone.timedelta(days=matched_plan.duration_in_days)
-                        # Optionally, reset usage if a subscription starts fresh after being expired
-                        # user_sub.projects_created = 0
-                        # user_sub.three_d_views_used = 0
-                        # user_sub.manual_estimates_used = 0
-
-                    # Update limits by adding them (additive/top-up logic)
-                    user_sub.project_limit += matched_plan.project_limit
-                    user_sub.three_d_views_limit += matched_plan.three_d_view_limit
-                    user_sub.manual_estimate_limit += matched_plan.manual_estimate_limit
-
-                    user_sub.save()
+                    
+                    # Use the proper method from accounts models to handle subscription upgrade/renewal
+                    user_sub.upgrade_or_renew_subscription(matched_plan, payment_record)
                     # --- SIMPLE SUBSCRIPTION LOGIC ENDS HERE ---
 
                     return Response({
@@ -1783,9 +1704,10 @@ def paystack_webhook(request):
                                     except Exception:
                                         received_amount_ghs = 0
 
-                                    # Activate/extend user subscription using helper
+                                    # Activate/extend user subscription using accounts model method
                                     try:
-                                        activate_user_subscription(tx.user, plan_obj, received_amount_ghs, reference)
+                                        user_sub, created = UserSubscription.objects.get_or_create(user=tx.user)
+                                        user_sub.upgrade_or_renew_subscription(plan_obj, tx)
                                         print(f"[{reference}] Subscription activated for user {tx.user_id} on plan {plan_obj.name}")
                                     except Exception as e:
                                         print(f"[{reference}] Failed to activate subscription: {e}")

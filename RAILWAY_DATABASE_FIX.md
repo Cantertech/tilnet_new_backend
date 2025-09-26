@@ -132,3 +132,6 @@ railway connect postgres
 
 The application will now start even if the database fails, and the debug endpoint will show us exactly what's wrong with the database connection.
 
+
+
+

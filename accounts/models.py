@@ -146,19 +146,14 @@ class UserSubscription(models.Model):
             self.start_date = timezone.now()
             self.end_date = self.start_date + timedelta(days=new_plan.duration_in_days)
 
-        # Update limits based on the new plan
-        # It's better to reset usage counters to 0 when a new plan is applied,
-        # or have a more complex logic for prorating/carrying over.
-        # For simplicity, let's assume usage resets or new limits apply.
-        self.project_limit = new_plan.project_limit
-        self.three_d_views_limit = new_plan.three_d_view_limit
-        self.manual_estimate_limit = new_plan.manual_estimate_limit
+        # Add new limits to existing limits (additive logic)
+        # This allows users to accumulate limits from multiple purchases
+        self.project_limit += new_plan.project_limit
+        self.three_d_views_limit += new_plan.three_d_view_limit
+        self.manual_estimate_limit += new_plan.manual_estimate_limit
 
-        # Reset usage counters if a new subscription period starts or plan changes significantly
-        # This depends on your business logic. For now, setting to 0.
-        self.projects_created = 0
-        self.three_d_views_used = 0
-        self.manual_estimates_used = 0
+        # Keep existing usage counters - don't reset them
+        # Users keep their current usage and get additional limits
 
         self.save()
 

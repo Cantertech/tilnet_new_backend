@@ -11136,3 +11136,7716 @@ class EstimateSerializer(serializers.ModelSerializer):
 
 
 # your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
+#         """
+
+#         Handle update of Estimate and its related items (Customer, Materials, Rooms, Labour).
+
+#         This method implements a delete-and-recreate strategy for nested items for simplicity.
+
+#         Handles linking/updating the customer.
+
+#         """
+
+#         print(f"--- EstimateSerializer update method started for Estimate ID: {instance.id} ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         # Pop nested lists and customer data
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # --- Handle Customer update or linking ---
+
+#         if customer_data is not None: # Process only if customer data was sent in the request
+
+#              print("Customer data provided for update.")
+
+#              user = instance.user # Get user from the estimate instance
+
+
+
+#              if 'id' in customer_data and customer_data['id'] is not None:
+
+#                  # If customer data includes an ID, try to link to an existing customer
+
+#                  customer_id = customer_data['id']
+
+#                  try:
+
+#                      # Ensure the existing customer belongs to the current user
+
+#                      customer_instance = Customer.objects.get(id=customer_id, user=user)
+
+#                      print(f"Linking Estimate {instance.id} to existing customer with ID: {customer_instance.id}")
+
+#                      instance.customer = customer_instance # Update the Estimate's customer field
+
+#                      # Optional: Update the existing customer's details if other fields were sent
+
+#                      # update_customer_serializer = CustomerSerializer(instance=customer_instance, data=customer_data, partial=True)
+
+#                      # update_customer_serializer.is_valid(raise_exception=True)
+
+#                      # update_customer_serializer.save() # Save updates to the customer instance
+
+#                      # print(f"Existing customer {customer_instance.id} details updated.")
+
+
+
+#                  except Customer.DoesNotExist:
+
+#                      raise serializers.ValidationError({"customer": f"Invalid customer ID '{customer_id}' or customer does not belong to this user."})
+
+#              else:
+
+#                  # If no customer ID is provided, assume they want to update the *currently linked* customer's details
+
+#                  # or create a new one if none was linked.
+
+#                  if instance.customer:
+
+#                      print(f"No customer ID provided. Updating current customer with ID: {instance.customer.id}")
+
+#                       # Update existing linked customer
+
+#                      try:
+
+#                          update_customer_serializer = CustomerSerializer(instance=instance.customer, data=customer_data, partial=True) # Use partial=True for partial updates
+
+#                          update_customer_serializer.is_valid(raise_exception=True)
+
+#                          update_customer_serializer.save() # Save updates to the customer instance
+
+#                          print("Existing linked customer updated.")
+
+#                      except Exception as e:
+
+#                           print(f"!!! Error updating existing linked Customer: {e} !!!")
+
+#                           raise serializers.ValidationError({"customer": f"Could not update linked customer: {e}"})
+
+
+
+#                  else:
+
+#                      print("No customer ID provided and no existing customer linked. Creating a new customer...")
+
+#                      # Create a new customer and link it
+
+#                      try:
+
+#                          new_customer_serializer = CustomerSerializer(data=customer_data)
+
+#                          new_customer_serializer.is_valid(raise_exception=True)
+
+#                          customer_instance = new_customer_serializer.save(user=user) # Associate new customer with user
+
+#                          instance.customer = customer_instance # Link the new customer to the estimate
+
+#                          print(f"New customer created/linked with ID: {customer_instance.id}")
+
+#                      except Exception as e:
+
+#                          print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                          raise serializers.ValidationError({"customer": f"Could not create new customer: {e}"})
+
+#         # If customer_data is None, it means the customer field was omitted in the request,
+
+#         # the current customer link remains unchanged. If you want to unlink the customer,
+
+#         # the frontend must send customer: null. This is handled by allow_null=True on the field.
+
+
+
+
+
+#         # Update parent Estimate fields (excluding nested fields already popped)
+
+#         # Ensure 'user' is not updated here.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Save the parent instance to apply its own field changes and customer link update
+
+#         instance.save()
+
+#         print("Estimate instance saved after field and customer updates.")
+
+
+
+
+
+#         # --- Update Nested Items (Delete and Recreate Strategy) ---
+
+#         # This is a common strategy for nested lists unless you need granular updates by ID.
+
+#         # Only process if the nested list was actually sent in the request (data is not None).
+
+
+
+#         # Update Material Items
+
+#         if materials_data is not None:
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials for this estimate
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     # You could validate data here using the nested serializer if needed
+
+#                     # material_serializer = MaterialItemSerializer(data=material_data)
+
+#                     # material_serializer.is_valid(raise_exception=True)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data) # Create new ones linked to estimate
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise serializers.ValidationError({"materials": f"Could not update MaterialItems: {e}"}) # Raise validation error
+
+
+
+
+
+#         # Update Room Areas
+
+#         if rooms_data is not None:
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms for this estimate
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     RoomArea.objects.create(estimate=instance, **room_data) # Create new ones linked to estimate
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise serializers.ValidationError({"rooms": f"Could not update RoomAreas: {e}"}) # Raise validation error
+
+
+
+#         # Update Labour Items
+
+        
+
+#         return instance
+
+    
+
+
+
+
+
+    # # serializers.py in your Django app (e.g., 'estimates')
+
+
+
+# from rest_framework import serializers
+
+# from .models import Customer, Estimate, MaterialItem, RoomArea, LabourItem
+
+# from django.contrib.auth import get_user_model
+
+
+
+# User = get_user_model()
+
+
+
+# class CustomerSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = Customer
+
+#         fields = ['id', 'name', 'phone', 'location', 'created_at', 'updated_at']
+
+#         # User will be set by the view or the parent serializer's create method
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class MaterialItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = MaterialItem
+
+#         fields = ['id', 'name', 'unit_price', 'quantity','total_price', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+    
+
+
+
+
+
+# class RoomAreaSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+
+#         model = RoomArea
+
+#         fields = ['id', 'name', 'type', 'floor_area', 'wall_area', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+
+
+
+# class LabourItemSerializer(serializers.ModelSerializer):
+
+#     # Add a calculated field for total_cost
+
+#     total_cost = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = LabourItem
+
+#         fields = ['id', 'role', 'count', 'rate', 'rate_type', 'total_cost', 'created_at', 'updated_at']
+
+#         read_only_fields = ['id', 'total_cost', 'created_at', 'updated_at'] # total_cost is calculated
+
+
+
+#     def get_total_cost(self, obj):
+
+#         """Calculates the total cost for the labour item."""
+
+#         try:
+
+#             # Ensure count and rate are treated as numbers
+
+#             count = int(obj.count) if obj.count is not None else 0
+
+#             rate = float(obj.rate) if obj.rate is not None else 0
+
+#             return round(count * rate, 2) # Round to 2 decimal places
+
+#         except (ValueError, TypeError):
+
+#             return 0.00 # Return 0 if calculation is not possible
+
+
+
+
+
+# class EstimateSerializer(serializers.ModelSerializer):
+
+#     """
+
+#     Serializer for the Estimate model, including nested serializers for related items.
+
+#     """
+
+#     # Use nested serializers to include related items in the Estimate representation
+
+#     materials = MaterialItemSerializer(many=True, required=False)
+
+#     rooms = RoomAreaSerializer(many=True, required=False)
+
+#     labour = LabourItemSerializer(many=True, required=False)
+
+#     customer = CustomerSerializer(required=False, allow_null=True) # Include customer details
+
+
+
+#     # Add calculated fields for total costs and grand total
+
+#     total_material_cost = serializers.SerializerMethodField()
+
+#     total_labour_cost = serializers.SerializerMethodField()
+
+#     grand_total = serializers.SerializerMethodField()
+
+#     per_square_meter_cost = serializers.SerializerMethodField()
+
+#     calculated_total_price = serializers.SerializerMethodField()
+
+
+
+#     class Meta:
+
+#         model = Estimate
+
+#         fields = [
+
+#             'id', 'user', 'customer', 'title', 'estimate_date',
+
+#             'transport_cost', 'remarks','profit',
+
+#             'materials', 'rooms', 'labour','per_square_meter_cost', 
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','estimated_days','calculated_total_price'
+
+#         ]
+
+#         # 'user' is set by the view's perform_create, so it's read-only here
+
+#         read_only_fields = [
+
+#             'id', 'user', 'estimate_date',
+
+#             'total_material_cost', 'total_labour_cost', 'grand_total',
+
+#             'created_at', 'updated_at','per_square_meter_cost',
+
+#         ]
+
+
+
+
+
+#     def get_total_material_cost(self, obj):
+
+#         """Calculates the total cost of all material items for the estimate."""
+
+#         # Access related materials via the 'materials' related_name
+
+#         total = sum(item.unit_price * item.quantity for item in obj.materials.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_total_labour_cost(self, obj):
+
+#         """Calculates the total cost of all labour items for the estimate."""
+
+#          # Access related labour via the 'labour' related_name
+
+#         total = sum((item.count if item.count is not None else 0) * (item.rate if item.rate is not None else 0) for item in obj.labour.all())
+
+#         return round(total, 2) if total is not None else 0.00
+
+
+
+#     def get_grand_total(self, obj):
+
+#         """Calculates the grand total including materials, labour, and transport."""
+
+#         total_materials = self.get_total_material_cost(obj)
+
+#         total_labour = self.get_total_labour_cost(obj)
+
+#         transport = float(obj.transport_cost) if obj.transport_cost is not None else 0
+
+#         profit = float(obj.profit) if obj.profit is not None else 0 
+
+#         return round(total_materials + total_labour + transport,profit, 2) if total_materials is not None and total_labour is not None else 0.00
+
+
+
+
+
+#     def create(self, validated_data):
+
+#         """
+
+#         Handle creation of Estimate and its related items.
+
+#         The 'user' is expected to be in validated_data because it's passed from the view.
+
+#         """
+
+#         print("--- EstimateSerializer create method started ---")
+
+#         print("Received validated_data:", validated_data)
+
+
+
+#         # Pop nested data lists and customer data
+
+#         materials_data = validated_data.pop('materials', [])
+
+#         rooms_data = validated_data.pop('rooms', [])
+
+#         labour_data = validated_data.pop('labour', [])
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         print("Materials data popped:", materials_data)
+
+#         print("Rooms data popped:", rooms_data)
+
+#         print("Labour data popped:", labour_data)
+
+#         print("Customer data popped:", customer_data)
+
+#         print("Remaining validated_data for Estimate:", validated_data)
+
+
+
+
+
+#         # Create the Estimate instance using validated_data (which includes the user)
+
+#         # The user is automatically in validated_data from the view's serializer.save(user=...)
+
+#         try:
+
+#             estimate = Estimate.objects.create(**validated_data)
+
+#             print(f"Estimate instance created with ID: {estimate.id}")
+
+#         except Exception as e:
+
+#             print(f"!!! Error creating Estimate instance: {e} !!!")
+
+#             raise # Re-raise the exception after printing
+
+
+
+
+
+#         # Handle customer creation or association
+
+#         if customer_data:
+
+#             print("Customer data provided. Attempting to create or link customer...")
+
+#             try:
+
+#                 # Get the user from the estimate instance (which was set from validated_data)
+
+#                 user = estimate.user
+
+#                 # You might want to check if a customer with this name/phone already exists for this user
+
+#                 # and either link to the existing one or create a new one.
+
+#                 # For simplicity here, we'll create a new customer if data is provided.
+
+#                 # FIX: Ensure user is associated with the Customer object
+
+#                 customer = Customer.objects.create(user=user, **customer_data)
+
+#                 estimate.customer = customer
+
+#                 estimate.save() # Save estimate to link the customer
+
+#                 print(f"Customer created/linked with ID: {customer.id}")
+
+#             except Exception as e:
+
+#                  print(f"!!! Error creating or linking Customer: {e} !!!")
+
+#                  # Optionally delete the estimate if customer creation failed
+
+#                  # estimate.delete()
+
+#                  raise # Re-raise the exception
+
+
+
+
+
+#         # Create related MaterialItems
+
+#         if materials_data:
+
+#             print("Materials data provided. Creating MaterialItem objects...")
+
+#             for material_data in materials_data:
+
+#                 try:
+
+#                     print("Creating MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=estimate, **material_data)
+
+#                     print("MaterialItem created successfully.")
+
+#                 except Exception as e:
+
+#                     print(f"!!! Error creating MaterialItem: {e} !!! Data: {material_data}")
+
+#                     # Decide how to handle errors here - continue or stop?
+
+#                     # For now, we'll print and continue, but you might want to raise an exception
+
+#                     # raise
+
+
+
+#         # Create related RoomAreas
+
+#         if rooms_data:
+
+#             print("Rooms data provided. Creating RoomArea objects...")
+
+#             for room_data in rooms_data:
+
+#                  try:
+
+#                     print("Creating RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=estimate, **room_data)
+
+#                     print("RoomArea created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating RoomArea: {e} !!! Data: {room_data}")
+
+#                     # raise
+
+
+
+#         # Create related LabourItems
+
+#         if labour_data:
+
+#             print("Labour data provided. Creating LabourItem objects...")
+
+#             for labour_data in labour_data:
+
+#                  try:
+
+#                     print("Creating LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=estimate, **labour_data)
+
+#                     print("LabourItem created successfully.")
+
+#                  except Exception as e:
+
+#                     print(f"!!! Error creating LabourItem: {e} !!! Data: {labour_data}")
+
+#                     # raise
+
+
+
+#         print("--- EstimateSerializer create method finished ---")
+
+#         return estimate
+
+
+
+#     def update(self, instance, validated_data):
+
+#         """
+
+#         Handle update of Estimate and its related items.
+
+#         This is more complex as it involves deleting/creating/updating nested items.
+
+#         A common strategy is to delete existing items and recreate them,
+
+#         or implement more granular update logic.
+
+#         For simplicity, this example shows deleting and recreating nested items.
+
+#         A production app might need more sophisticated update logic to avoid data loss or performance issues.
+
+#         """
+
+#         print("--- EstimateSerializer update method started ---")
+
+#         print("Received validated_data for update:", validated_data)
+
+
+
+#         materials_data = validated_data.pop('materials', None)
+
+#         rooms_data = validated_data.pop('rooms', None)
+
+#         labour_data = validated_data.pop('labour', None)
+
+#         customer_data = validated_data.pop('customer', None)
+
+
+
+#         # Update Estimate fields
+
+#         # Ensure 'user' is not updated here if it's in validated_data,
+
+#         # though it should be read-only in the serializer Meta class.
+
+#         # If user is explicitly passed in validated_data despite being read-only,
+
+#         # you might need to pop it here: validated_data.pop('user', None)
+
+#         for attr, value in validated_data.items():
+
+#             setattr(instance, attr, value)
+
+#         print("Estimate instance fields updated.")
+
+
+
+#         # Handle customer update or creation
+
+#         if customer_data is not None:
+
+#              print("Customer data provided for update.")
+
+#              if instance.customer:
+
+#                  print(f"Updating existing customer with ID: {instance.customer.id}")
+
+#                  # Update existing customer (simple update, might need more logic)
+
+#                  try:
+
+#                      for attr, value in customer_data.items():
+
+#                          setattr(instance.customer, attr, value)
+
+#                      instance.customer.save()
+
+#                      print("Existing customer updated.")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error updating existing Customer: {e} !!!")
+
+#                      raise
+
+#              else:
+
+#                  print("No existing customer linked. Creating a new customer...")
+
+#                  # Create a new customer and link it
+
+#                  try:
+
+#                      user = instance.user # Get user from the estimate instance
+
+#                      customer = Customer.objects.create(user=user, **customer_data)
+
+#                      instance.customer = customer
+
+#                      print(f"New customer created/linked with ID: {customer.id}")
+
+#                  except Exception as e:
+
+#                      print(f"!!! Error creating new Customer during update: {e} !!!")
+
+#                      raise
+
+
+
+#         instance.save() # Save the estimate instance after updating its fields and customer link
+
+#         print("Estimate instance saved after potential customer update.")
+
+
+
+#         # Update related MaterialItems (delete and recreate strategy)
+
+#         if materials_data is not None: # Only update if materials data is provided in the request
+
+#             print("Materials data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.materials.all().delete() # Delete all existing materials
+
+#                 print("Existing MaterialItems deleted.")
+
+#                 for material_data in materials_data:
+
+#                     print("Creating new MaterialItem with data:", material_data)
+
+#                     MaterialItem.objects.create(estimate=instance, **material_data)
+
+#                     print("New MaterialItem created.")
+
+#                 print("All new MaterialItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating MaterialItems: {e} !!!")
+
+#                 raise
+
+
+
+
+
+#         # Update related RoomAreas (delete and recreate strategy)
+
+#         if rooms_data is not None: # Only update if rooms data is provided in the request
+
+#             print("Rooms data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.rooms.all().delete() # Delete all existing rooms
+
+#                 print("Existing RoomAreas deleted.")
+
+#                 for room_data in rooms_data:
+
+#                     print("Creating new RoomArea with data:", room_data)
+
+#                     RoomArea.objects.create(estimate=instance, **room_data)
+
+#                     print("New RoomArea created.")
+
+#                 print("All new RoomAreas created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating RoomAreas: {e} !!!")
+
+#                 raise
+
+
+
+#         # Update related LabourItems (delete and recreate strategy)
+
+#         if labour_data is not None: # Only update if labour data is provided in the request
+
+#             print("Labour data provided for update. Deleting existing and recreating...")
+
+#             try:
+
+#                 instance.labour.all().delete() # Delete all existing labour items
+
+#                 print("Existing LabourItems deleted.")
+
+#                 for labour_data in labour_data:
+
+#                     print("Creating new LabourItem with data:", labour_data)
+
+#                     LabourItem.objects.create(estimate=instance, **labour_data)
+
+#                     print("New LabourItem created.")
+
+#                 print("All new LabourItems created.")
+
+#             except Exception as e:
+
+#                 print(f"!!! Error updating LabourItems: {e} !!!")
+
+#                 raise
+
+
+
+#         print("--- EstimateSerializer update method finished ---")
+
+#         return instance
+
+
+
+
+
+
+
+# your_project/estimates/serializers.py
