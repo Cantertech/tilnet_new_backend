@@ -98,7 +98,7 @@ class PaymentTransaction(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     paystack_response_status = models.CharField(max_length=20, blank=True, null=True) # Paystack's initial 'status'
     paystack_response_message = models.TextField(blank=True, null=True)
-    gateway_response = models.CharField(max_length=100, blank=True, null=True) # From Paystack webhook
+    gateway_response = models.TextField(blank=True, null=True) # From Paystack webhook
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

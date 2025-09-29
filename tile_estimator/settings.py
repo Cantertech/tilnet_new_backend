@@ -95,26 +95,16 @@ TEMPLATES = [
 WSGI_APPLICATION = 'tile_estimator.wsgi.application'
 
 # Database configuration
-# Use Railway database if DATABASE_URL is set, otherwise use local SQLite for development
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Use Railway PostgreSQL database
+DATABASE_URL = "postgresql://postgres:HwdCnuWZklkEWApRIhzZjcJMHOhOCMPT@mainline.proxy.rlwy.net:30544/railway"
 
-if DATABASE_URL:
-    # Use remote database (Railway/Production)
-    DATABASES = {
-        "default": dj_database_url.parse(
-            DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=True
-        )
-    }
-else:
-    # Use local SQLite for development
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+DATABASES = {
+    "default": dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=600,
+        conn_health_checks=True
+    )
+}
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
 # Password validation
@@ -186,8 +176,8 @@ CORS_ALLOW_CREDENTIALS = True
 # os.getenv('AFRICASTALKING_API_KEY')
 AFRICASTALKING_USERNAME = os.getenv('AFRICASTALKING_USERNAME', 'sandbox') # Keep sandbox for local
 AFRICASTALKING_API_KEY = os.getenv('AFRICASTALKING_API_KEY', '') # Empty string default is safer
+PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', 'sk_test_your_secret_key_here')
 
-PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
 PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY', '')
 PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', '')
 VERIFICATION_CODE_EXPIRY_MINUTES = 10

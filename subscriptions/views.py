@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 import traceback
 import uuid
+import threading
 from rest_framework import viewsets, generics, status,permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -1006,11 +1007,15 @@ class AppVersionCheckAPIView(APIView):
             'message': 'Latest app version information.'
         }, status=status.HTTP_200_OK)
     
-def verify_transaction_with_paystack(reference):
+def verify_transaction_with_paystack(reference, max_retries=10, base_delay=2):
     """
-    Verify transaction directly with Paystack API
-    Returns: (is_success, data)
+    Verify transaction directly with Paystack API with hybrid retry logic:
+    1. Try for 3 minutes with exponential backoff
+    2. If still ongoing after 3 minutes, return 'ongoing_timeout' (success-like)
+    3. Continue background checks every 1 minute
+    Returns: (is_success, data, status_type)
     """
+    import time
     from django.conf import settings
     
     url = f"https://api.paystack.co/transaction/verify/{reference}"
@@ -1018,25 +1023,136 @@ def verify_transaction_with_paystack(reference):
         "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
     }
     
+    start_time = time.time()
+    three_minutes = 180  # 3 minutes in seconds
+    
+    for attempt in range(max_retries):
+        try:
+            elapsed_time = time.time() - start_time
+            print(f"[PAYSTACK_VERIFY] attempt {attempt + 1}/{max_retries} calling Paystack API ref={reference} (elapsed: {elapsed_time:.1f}s)")
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            print(f"[PAYSTACK_VERIFY] Paystack response ref={reference} status={data.get('status')} tx_status={data.get('data', {}).get('status')}")
+            
+            tx_status = data.get('data', {}).get('status')
+            
+            if data.get('status') and tx_status == 'success':
+                # ✅ Payment is successful
+                print(f"[PAYSTACK_VERIFY] SUCCESS ref={reference} after {attempt + 1} attempts")
+                return True, data['data'], 'success'
+            elif tx_status == 'failed':
+                # ❌ Payment failed
+                print(f"[PAYSTACK_VERIFY] FAILED ref={reference} after {attempt + 1} attempts")
+                return False, data, 'failed'
+            elif tx_status in ['pending', 'ongoing']:
+                # 🔄 Payment still processing
+                if elapsed_time >= three_minutes:
+                    # ⏰ 3 minutes elapsed - give package but keep checking
+                    print(f"[PAYSTACK_VERIFY] ONGOING_TIMEOUT ref={reference} after {elapsed_time:.1f}s - giving package, will check later")
+                    return True, data, 'ongoing_timeout'
+                elif attempt < max_retries - 1:  # Don't delay on last attempt
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[PAYSTACK_VERIFY] ONGOING/PENDING ref={reference} attempt {attempt + 1}, retrying in {delay}s")
+                    time.sleep(delay)
+                    continue
+                else:
+                    print(f"[PAYSTACK_VERIFY] TIMEOUT ref={reference} - max retries reached, status still {tx_status}")
+                    return False, data, 'timeout'
+            else:
+                # ❓ Unknown status
+                print(f"[PAYSTACK_VERIFY] UNKNOWN STATUS ref={reference} status={tx_status}")
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[PAYSTACK_VERIFY] retrying in {delay}s")
+                    time.sleep(delay)
+                    continue
+                else:
+                    return False, data, 'unknown'
+                    
+        except Exception as e:
+            print(f"[PAYSTACK_VERIFY] ERROR ref={reference} attempt {attempt + 1} err={e}")
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                print(f"[PAYSTACK_VERIFY] retrying in {delay}s")
+                time.sleep(delay)
+                continue
+            else:
+                return False, {'error': str(e)}, 'error'
+    
+    print(f"[PAYSTACK_VERIFY] EXHAUSTED ALL RETRIES ref={reference}")
+    return False, {'error': 'Max retries exceeded'}, 'exhausted'
+
+
+def background_verify_payment(reference, user_id, plan_name):
+    """
+    Background task to continue checking payment status after 3 minutes
+    Checks every 1 minute until definitive result
+    """
+    import time
+    from django.utils import timezone
+    
+    print(f"[BACKGROUND_VERIFY] Starting background verification for ref={reference}")
+    
+    # Check every 1 minute for up to 2 hours
+    max_background_checks = 120  # 2 hours
+    
+    for check in range(max_background_checks):
+        try:
+            print(f"[BACKGROUND_VERIFY] check {check + 1}/{max_background_checks} ref={reference}")
+            
+            # Use the same verification logic but with single attempt
+            is_success, data, status_type = verify_transaction_with_paystack(reference, max_retries=1, base_delay=0)
+            
+            if status_type == 'success':
+                # ✅ Payment confirmed successful - do nothing (already given package)
+                print(f"[BACKGROUND_VERIFY] CONFIRMED SUCCESS ref={reference} - package already given")
+                break
+            elif status_type == 'failed':
+                # ❌ Payment failed - take package back
+                print(f"[BACKGROUND_VERIFY] PAYMENT FAILED ref={reference} - removing package")
+                revoke_subscription_package(user_id, plan_name, reference)
+                break
+            else:
+                # 🔄 Still ongoing - wait 1 minute and check again
+                print(f"[BACKGROUND_VERIFY] STILL ONGOING ref={reference} - checking again in 60s")
+                time.sleep(60)  # Wait 1 minute
+                
+        except Exception as e:
+            print(f"[BACKGROUND_VERIFY] ERROR ref={reference} check {check + 1}: {e}")
+            time.sleep(60)  # Wait 1 minute before retry
+    
+    print(f"[BACKGROUND_VERIFY] COMPLETED ref={reference}")
+
+
+def revoke_subscription_package(user_id, plan_name, reference):
+    """
+    Revoke a subscription package that was given prematurely
+    """
     try:
-        print(f"[PAYSTACK_VERIFY] calling Paystack API ref={reference}")
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        from accounts.models import UserSubscription, SubscriptionPlan
         
-        print(f"[PAYSTACK_VERIFY] Paystack response ref={reference} status={data.get('status')} tx_status={data.get('data', {}).get('status')}")
+        # Find the user's active subscription
+        user_subscription = UserSubscription.objects.filter(
+            user_id=user_id,
+            is_active=True
+        ).first()
         
-        if data.get('status') and data.get('data', {}).get('status') == 'success':
-            # ✅ Payment is successful
-            print(f"[PAYSTACK_VERIFY] SUCCESS ref={reference}")
-            return True, data['data']
+        if user_subscription:
+            print(f"[REVOKE] Revoking package for user {user_id} ref={reference}")
+            
+            # Deactivate the subscription
+            user_subscription.is_active = False
+            user_subscription.save()
+            
+            print(f"[REVOKE] Package revoked successfully for user {user_id}")
         else:
-            # ❌ Payment failed or not verified
-            print(f"[PAYSTACK_VERIFY] FAILED/PENDING ref={reference} status={data.get('data', {}).get('status')}")
-            return False, data
+            print(f"[REVOKE] No active subscription found for user {user_id}")
+            
     except Exception as e:
-        print(f"[PAYSTACK_VERIFY] ERROR ref={reference} err={e}")
-        return False, {'error': str(e)}
+        print(f"[REVOKE] ERROR revoking package for user {user_id}: {e}")
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1060,13 +1176,26 @@ def check_payment_status(request, reference):
         payment = PaymentTransaction.objects.get(reference=reference, user=request.user)
         add_log(f"CHECK_STATUS: found payment status={payment.status} plan_name={payment.plan_name} ref={reference}")
         
-        # Poll Paystack directly for real-time status
+        # Poll Paystack directly for real-time status with hybrid logic
         add_log(f"PAYSTACK_VERIFY: calling Paystack API for ref={reference}")
-        is_success, paystack_data = verify_transaction_with_paystack(reference)
+        try:
+            is_success, paystack_data, status_type = verify_transaction_with_paystack(reference)
+            add_log(f"PAYSTACK_VERIFY: verification completed ref={reference} is_success={is_success} status_type={status_type}")
+        except Exception as e:
+            add_log(f"PAYSTACK_VERIFY: ERROR during verification ref={reference} error={str(e)}")
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Error verifying payment: {str(e)}',
+                'logs': logs
+            }, status=500)
         
         if is_success:
-            add_log(f"PAYSTACK_VERIFY: SUCCESS - payment verified by Paystack ref={reference}")
-            # Payment is successful according to Paystack
+            if status_type == 'success':
+                add_log(f"PAYSTACK_VERIFY: CONFIRMED SUCCESS - payment verified by Paystack ref={reference}")
+            elif status_type == 'ongoing_timeout':
+                add_log(f"PAYSTACK_VERIFY: ONGOING TIMEOUT - giving package after 3 minutes ref={reference}")
+            
+            # Payment is successful (either confirmed or ongoing timeout)
             if payment.status != 'completed':
                 add_log(f"CHECK_STATUS: updating payment to completed ref={reference}")
                 payment.status = 'completed'
@@ -1085,6 +1214,17 @@ def check_payment_status(request, reference):
                             user_sub, created = UserSubscription.objects.get_or_create(user=payment.user)
                             user_sub.upgrade_or_renew_subscription(plan, payment)
                             add_log(f"CHECK_STATUS: subscription activated successfully ref={reference}")
+                            
+                            # If this was an ongoing_timeout, start background verification
+                            if status_type == 'ongoing_timeout':
+                                add_log(f"CHECK_STATUS: starting background verification ref={reference}")
+                                bg_thread = threading.Thread(
+                                    target=background_verify_payment,
+                                    args=(reference, payment.user.id, plan_name),
+                                    daemon=True
+                                )
+                                bg_thread.start()
+                                add_log(f"CHECK_STATUS: background verification started ref={reference}")
                         else:
                             add_log(f"CHECK_STATUS: ERROR - plan not found: {plan_name} ref={reference}")
                     else:
@@ -1105,27 +1245,25 @@ def check_payment_status(request, reference):
             
         else:
             # Payment failed or still pending
-            paystack_status = paystack_data.get('data', {}).get('status', 'pending')
-            add_log(f"PAYSTACK_VERIFY: payment status={paystack_status} ref={reference}")
-            
-            if paystack_status == 'failed':
+            if status_type == 'failed':
+                add_log(f"PAYSTACK_VERIFY: PAYMENT FAILED ref={reference}")
                 add_log(f"CHECK_STATUS: payment failed, updating status ref={reference}")
                 payment.status = 'failed'
                 payment.gateway_response = str(paystack_data)
                 payment.save()
-            elif paystack_status == 'pending':
-                add_log(f"CHECK_STATUS: payment still pending ref={reference}")
             else:
+                # Still pending or ongoing
+                paystack_status = paystack_data.get('data', {}).get('status', 'pending')
                 add_log(f"CHECK_STATUS: payment status={paystack_status} ref={reference}")
                 
             return Response({
-                'status': paystack_status,
+                'status': payment.status,
                 'reference': payment.reference,
                 'amount': str(payment.amount),
                 'plan_name': payment.plan_name,
                 'mobile_operator': payment.mobile_operator,
                 'completed_at': payment.completed_at.isoformat() if payment.completed_at else None,
-                'message': f'Payment {paystack_status}',
+                'message': f'Payment {payment.status}',
                 'logs': logs
             }, status=status.HTTP_200_OK)
             
