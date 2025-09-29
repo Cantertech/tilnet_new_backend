@@ -1006,41 +1006,141 @@ class AppVersionCheckAPIView(APIView):
             'message': 'Latest app version information.'
         }, status=status.HTTP_200_OK)
     
+def verify_transaction_with_paystack(reference):
+    """
+    Verify transaction directly with Paystack API
+    Returns: (is_success, data)
+    """
+    from django.conf import settings
+    
+    url = f"https://api.paystack.co/transaction/verify/{reference}"
+    headers = {
+        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+    }
+    
+    try:
+        print(f"[PAYSTACK_VERIFY] calling Paystack API ref={reference}")
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        print(f"[PAYSTACK_VERIFY] Paystack response ref={reference} status={data.get('status')} tx_status={data.get('data', {}).get('status')}")
+        
+        if data.get('status') and data.get('data', {}).get('status') == 'success':
+            # ✅ Payment is successful
+            print(f"[PAYSTACK_VERIFY] SUCCESS ref={reference}")
+            return True, data['data']
+        else:
+            # ❌ Payment failed or not verified
+            print(f"[PAYSTACK_VERIFY] FAILED/PENDING ref={reference} status={data.get('data', {}).get('status')}")
+            return False, data
+    except Exception as e:
+        print(f"[PAYSTACK_VERIFY] ERROR ref={reference} err={e}")
+        return False, {'error': str(e)}
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def check_payment_status(request, reference):
     """
     API endpoint to check the status of a payment transaction.
+    Now polls Paystack directly for real-time status.
     """
-    print(f"[CHECK_STATUS] ref={reference} user={request.user.id}")
+    logs = []  # Collect all logs to send to frontend
+    
+    def add_log(message):
+        timestamp = timezone.now().strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        logs.append(log_entry)
+        print(log_entry)  # Also print to console
+    
+    add_log(f"CHECK_STATUS: ref={reference} user={request.user.id}")
+    
     try:
+        # First check our local database
         payment = PaymentTransaction.objects.get(reference=reference, user=request.user)
-        print(f"[CHECK_STATUS] found payment status={payment.status} plan_name={payment.plan_name} ref={reference}")
+        add_log(f"CHECK_STATUS: found payment status={payment.status} plan_name={payment.plan_name} ref={reference}")
         
-        # If payment is completed but subscription not activated, trigger verification
-        if payment.status == 'completed' and not payment.subscription:
-            print(f"[CHECK_STATUS] payment completed but no subscription, triggering verify ref={reference}")
-            # Trigger verification to activate subscription
-            verify_url = f"/api/subscriptions/payments/verify/"
-            # This would need to be called from the frontend or we can call it here
-            # For now, just log that we need to verify
+        # Poll Paystack directly for real-time status
+        add_log(f"PAYSTACK_VERIFY: calling Paystack API for ref={reference}")
+        is_success, paystack_data = verify_transaction_with_paystack(reference)
+        
+        if is_success:
+            add_log(f"PAYSTACK_VERIFY: SUCCESS - payment verified by Paystack ref={reference}")
+            # Payment is successful according to Paystack
+            if payment.status != 'completed':
+                add_log(f"CHECK_STATUS: updating payment to completed ref={reference}")
+                payment.status = 'completed'
+                payment.completed_at = timezone.now()
+                payment.gateway_response = str(paystack_data)
+                payment.save()
+                
+                # Activate subscription
+                try:
+                    from accounts.models import SubscriptionPlan
+                    plan_name = payment.plan_name
+                    if plan_name:
+                        plan = SubscriptionPlan.objects.filter(name__iexact=plan_name).first()
+                        if plan:
+                            add_log(f"CHECK_STATUS: activating subscription plan={plan.name} ref={reference}")
+                            user_sub, created = UserSubscription.objects.get_or_create(user=payment.user)
+                            user_sub.upgrade_or_renew_subscription(plan, payment)
+                            add_log(f"CHECK_STATUS: subscription activated successfully ref={reference}")
+                        else:
+                            add_log(f"CHECK_STATUS: ERROR - plan not found: {plan_name} ref={reference}")
+                    else:
+                        add_log(f"CHECK_STATUS: ERROR - no plan_name in payment ref={reference}")
+                except Exception as e:
+                    add_log(f"CHECK_STATUS: ERROR - subscription activation failed ref={reference} err={str(e)}")
             
-        # Return relevant details, especially the status
-        return Response({
-            'status': payment.status,
-            'reference': payment.reference,
-            'amount': str(payment.amount), # Convert Decimal to string
-            'plan_name': payment.plan_name,
-            'mobile_operator': payment.mobile_operator,
-            'completed_at': payment.completed_at.isoformat() if payment.completed_at else None,
-            # Add other fields you might need on the frontend
-        }, status=status.HTTP_200_OK)
+            return Response({
+                'status': 'completed',
+                'reference': payment.reference,
+                'amount': str(payment.amount),
+                'plan_name': payment.plan_name,
+                'mobile_operator': payment.mobile_operator,
+                'completed_at': payment.completed_at.isoformat() if payment.completed_at else None,
+                'message': 'Payment successful!',
+                'logs': logs
+            }, status=status.HTTP_200_OK)
+            
+        else:
+            # Payment failed or still pending
+            paystack_status = paystack_data.get('data', {}).get('status', 'pending')
+            add_log(f"PAYSTACK_VERIFY: payment status={paystack_status} ref={reference}")
+            
+            if paystack_status == 'failed':
+                add_log(f"CHECK_STATUS: payment failed, updating status ref={reference}")
+                payment.status = 'failed'
+                payment.gateway_response = str(paystack_data)
+                payment.save()
+            elif paystack_status == 'pending':
+                add_log(f"CHECK_STATUS: payment still pending ref={reference}")
+            else:
+                add_log(f"CHECK_STATUS: payment status={paystack_status} ref={reference}")
+                
+            return Response({
+                'status': paystack_status,
+                'reference': payment.reference,
+                'amount': str(payment.amount),
+                'plan_name': payment.plan_name,
+                'mobile_operator': payment.mobile_operator,
+                'completed_at': payment.completed_at.isoformat() if payment.completed_at else None,
+                'message': f'Payment {paystack_status}',
+                'logs': logs
+            }, status=status.HTTP_200_OK)
+            
     except PaymentTransaction.DoesNotExist:
-        print(f"[CHECK_STATUS] payment not found ref={reference} user={request.user.id}")
-        return Response({'message': 'Transaction not found or not associated with user.'}, status=status.HTTP_404_NOT_FOUND)
+        add_log(f"CHECK_STATUS: ERROR - payment not found ref={reference} user={request.user.id}")
+        return Response({
+            'message': 'Transaction not found or not associated with user.',
+            'logs': logs
+        }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        print(f"[CHECK_STATUS] error ref={reference} err={e}")
-        return Response({'message': 'An error occurred while checking status.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        add_log(f"CHECK_STATUS: ERROR - exception occurred ref={reference} err={str(e)}")
+        return Response({
+            'message': 'An error occurred while checking status.',
+            'logs': logs
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Initialize Africa's Talking
 africastalking.initialize(settings.AFRICASTALKING_USERNAME, settings.AFRICASTALKING_API_KEY)
