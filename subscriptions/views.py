@@ -156,6 +156,7 @@ class InitiatePaymentAPIView(APIView):
     permission_classes = [IsAuthenticated] # Requires user to be logged in and send a token
 
     def post(self, request, *args, **kwargs):
+        print(f"[INITIATE] start user={getattr(request.user, 'id', None)}")
         serializer = InitiatePaymentSerializer(data=request.data)
 
         if not serializer.is_valid():
@@ -196,6 +197,7 @@ class InitiatePaymentAPIView(APIView):
         user = request.user # Authenticated user is available here
 
         reference = f"TXN_{uuid.uuid4().hex}" # Generate unique reference
+        print(f"[INITIATE] ref={reference} user={user.id} email={email} amount_ghs={amount_ghs} operator={mobile_operator} plan_name={plan_name}")
         try:
             # This will raise a ValueError if formatting fails
             phone_number_for_paystack = format_ghanaian_phone_number(phone_number)
@@ -279,6 +281,7 @@ class InitiatePaymentAPIView(APIView):
         }
 
         try:
+            print(f"[INITIATE] calling Paystack /charge ref={reference}")
             paystack_response = requests.post(url, headers=headers, json=payload, timeout=30)
             # In case of non-2xx, capture body
             body_text = None
@@ -286,9 +289,10 @@ class InitiatePaymentAPIView(APIView):
                 body_text = paystack_response.text
             except Exception:
                 pass
+            print(f"[INITIATE] Paystack /charge HTTP {paystack_response.status_code} ref={reference}")
             paystack_response.raise_for_status()  # Raise error for HTTP 4xx/5xx
             paystack_data = paystack_response.json()
-            print("Payment initialized")
+            print("[INITIATE] gateway accepted request")
 
             data = paystack_data.get('data', {}) or {}
             api_status = paystack_data.get('status')  # True/False
@@ -304,7 +308,7 @@ class InitiatePaymentAPIView(APIView):
             payment_record.user = request.user
             payment_record.save()
 
-            print(f"[{reference}] Paystack response: API status={api_status}, charge_status={charge_status}, next_action={next_action}, gateway_response={gateway_response}")
+            print(f"[{reference}] Paystack response: api_status={api_status} charge_status={charge_status} next_action={next_action} gateway_response={gateway_response}")
 
             if api_status and data:
                 if next_action == 'send_otp' or charge_status == 'send_otp' or 'otp' in gateway_response.lower():
@@ -1376,6 +1380,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         used manually for polling (though webhooks are preferred for final status).
         """
         reference = request.data.get('reference')
+        print(f"[VERIFY] start ref={reference} user={getattr(request.user, 'id', None)}")
         if not reference:
             return Response(
                 {"detail": "Reference is required."},
@@ -1397,10 +1402,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
         try:
             response = requests.get(url, headers=headers, timeout=30)
             response_data = response.json()
+            print(f"[VERIFY] Paystack /verify HTTP {response.status_code} ref={reference}")
 
             if response.status_code == 200 and response_data.get('status'):
                 transaction_data = response_data.get('data', {})
                 metadata = transaction_data.get('metadata', {})
+                print(f"[VERIFY] tx_status={transaction_data.get('status')} amount={transaction_data.get('amount')} currency={transaction_data.get('currency')} ref={reference}")
 
                 # Paystack might return metadata as a string, try to parse it
                 if isinstance(metadata, str):
@@ -1409,6 +1416,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     except json.JSONDecodeError:
                         print("Warning: Could not parse metadata string as JSON.")
                         metadata = {} # Default to empty dict if parsing fails
+                print(f"[VERIFY] metadata plan_id={metadata.get('plan_id')} plan_name={metadata.get('plan_name')} user_id_in_meta={metadata.get('user_id')} ref={reference}")
 
                 plan_id = metadata.get('plan_id')
                 user_id = metadata.get('user_id')
@@ -1421,21 +1429,20 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST # Or 403 Forbidden
                     )
 
-                # Check if a transaction with this reference already exists to prevent double processing
-                if PaymentTransaction.objects.filter(reference=reference).exists():
-                     print(f"Warning: Transaction with reference {reference} already exists. Skipping creation.")
-                     # You might want to return the existing transaction details
-                     existing_transaction = PaymentTransaction.objects.get(reference=reference)
-                     return Response(
-                         {"detail": "Transaction already processed.", "transaction": PaymentTransactionSerializer(existing_transaction).data},
-                         status=status.HTTP_200_OK # Indicate success as it was already handled
-                     )
+                # Try to fetch existing transaction to enforce idempotency but still proceed to activation
+                existing_transaction = PaymentTransaction.objects.filter(reference=reference).first()
+                if existing_transaction:
+                    print(f"Info: Transaction with reference {reference} already exists. Will update/activate if needed.")
+                    transaction = existing_transaction
+                else:
+                    transaction = None
 
                 # Get the plan
+                print(f"[VERIFY] resolving plan by id={plan_id} ref={reference}")
                 try:
                     plan = SubscriptionPlan.objects.get(id=plan_id)
                 except SubscriptionPlan.DoesNotExist:
-                    print(f"Error: Subscription plan with ID {plan_id} not found during verification.")
+                    print(f"[VERIFY] plan_not_found id={plan_id} ref={reference}")
                     return Response(
                         {"detail": "Subscription plan not found."},
                         status=status.HTTP_404_NOT_FOUND
@@ -1444,25 +1451,36 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 # Check if the payment was successful based on Paystack's status
                 paystack_transaction_status = transaction_data.get('status')
                 if paystack_transaction_status != 'success':
-                     print(f"Payment not successful according to Paystack. Status: {paystack_transaction_status}, Reference: {reference}")
+                     print(f"[VERIFY] not_success status={paystack_transaction_status} ref={reference}")
                      return Response(
                          {"detail": f"Payment was not successful. Status: {paystack_transaction_status}", "paystack_response": response_data},
                          status=status.HTTP_400_BAD_REQUEST # Indicate payment failure
                      )
 
 
-                # Record payment transaction
-                transaction = PaymentTransaction.objects.create(
-                    user=request.user,
-                    amount=Decimal(str(transaction_data.get('amount', 0))) / 100,  # Convert from kobo to GHS, use Decimal
-                    currency=transaction_data.get('currency', 'GHS'),
-                    provider='paystack',
-                    transaction_id=transaction_data.get('id'), # Paystack's internal transaction ID
-                    status=paystack_transaction_status, # Use the verified status
-                    reference=reference,
-                    metadata=transaction_data # Store full Paystack response for debugging/auditing
-                )
-                print(f"PaymentTransaction recorded with ID: {transaction.id}, Status: {transaction.status}")
+                # Record or update payment transaction
+                print(f"[VERIFY] record_tx create={transaction is None} status={paystack_transaction_status} ref={reference}")
+                if transaction is None:
+                    transaction = PaymentTransaction.objects.create(
+                        user=request.user,
+                        amount=Decimal(str(transaction_data.get('amount', 0))) / 100,  # Convert from kobo to GHS, use Decimal
+                        currency=transaction_data.get('currency', 'GHS'),
+                        provider='paystack',
+                        transaction_id=transaction_data.get('id'), # Paystack's internal transaction ID
+                        status=paystack_transaction_status, # Use the verified status
+                        reference=reference,
+                        metadata=transaction_data # Store full Paystack response for debugging/auditing
+                    )
+                    print(f"[VERIFY] tx_created id={transaction.id} status={transaction.status} amount={transaction.amount} ref={reference}")
+                else:
+                    # Update existing record to reflect success/state
+                    transaction.status = paystack_transaction_status
+                    transaction.amount = Decimal(str(transaction_data.get('amount', 0))) / 100
+                    transaction.currency = transaction_data.get('currency', 'GHS')
+                    transaction.transaction_id = transaction_data.get('id')
+                    transaction.metadata = transaction_data
+                    transaction.save(update_fields=["status","amount","currency","transaction_id","metadata","updated_at"])                
+                    print(f"[VERIFY] tx_updated id={transaction.id} status={transaction.status} amount={transaction.amount} ref={reference}")
 
 
                 # Create or update subscription ONLY if payment was successful
@@ -1478,7 +1496,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
                 if existing_subscription:
                     # Extend existing subscription
-                    print(f"Extending existing subscription {existing_subscription.id}")
+                    print(f"[VERIFY] extend_sub id={existing_subscription.id} +{plan.duration_days}d ref={reference}")
                     existing_subscription.end_date = existing_subscription.end_date + timezone.timedelta(days=plan.duration_days)
                     # Add the new payment amount to the total amount paid
                     existing_subscription.amount_paid = (existing_subscription.amount_paid or Decimal('0.00')) + Decimal(str(transaction.amount))
@@ -1486,10 +1504,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     existing_subscription.payment_id = reference # Update with the latest reference
                     existing_subscription.save()
                     subscription = existing_subscription
-                    print("Existing subscription extended.")
+                    print("[VERIFY] extended_sub_saved")
                 else:
                     # Create new subscription
-                    print("Creating new subscription")
+                    print("[VERIFY] create_sub")
                     subscription = UserSubscription.objects.create(
                         user=request.user,
                         plan=plan,
@@ -1498,16 +1516,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         is_active=True,
                         payment_id=reference,
                         payment_status='paid', # Assuming 'paid' is your internal status
-                        amount_paid=Decimal(str(transaction.amount)), # Use the amount from the transaction
-                        projects_used=0, # Reset or handle based on your logic
-                        room_views_used=0 # Reset or handle based on your logic
+                        amount_paid=Decimal(str(transaction.amount)) # Use the amount from the transaction
                     )
-                    print(f"New subscription created with ID: {subscription.id}")
+                    print(f"[VERIFY] created_sub id={subscription.id}")
 
                 # Link transaction to subscription
                 transaction.subscription = subscription
                 transaction.save()
-                print(f"Transaction {transaction.id} linked to subscription {subscription.id}")
+                print(f"[VERIFY] link_tx_sub tx={transaction.id} sub={subscription.id} ref={reference}")
 
 
                 return Response({
@@ -1519,7 +1535,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             else:
                 # Paystack verification failed (e.g., invalid reference, transaction not found)
                 error_message = response_data.get('message', 'Payment verification failed')
-                print(f"Paystack Verification Failed: {response_data}")
+                print(f"[VERIFY] failed ref={reference} payload={response_data}")
                 return Response(
                     {"detail": f"Payment verification failed: {error_message}", "paystack_response": response_data},
                     status=status.HTTP_400_BAD_REQUEST
@@ -1628,6 +1644,7 @@ def paystack_webhook(request):
     Verifies signature and processes payment status updates.
     """
     signature = request.headers.get('X-Paystack-Signature')
+    print("[WEBHOOK] received webhook. has_signature=", bool(signature))
     secret = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
     
     if not secret:
@@ -1638,23 +1655,23 @@ def paystack_webhook(request):
     computed = hmac.new(secret.encode('utf-8'), body, hashlib.sha512).hexdigest()
     
     if not signature or signature != computed:
-        print("Invalid webhook signature")
+        print("[WEBHOOK] invalid signature")
         return HttpResponse(status=401)
 
     try:
         event = json.loads(body.decode('utf-8'))
         event_type = event.get('event')
         data = event.get('data', {})
-        
-        print(f"Webhook received: {event_type}")
+        print(f"[WEBHOOK] event={event_type} ref={data.get('reference')}")
         
         if event_type == 'charge.success':
             reference = data.get('reference')
             if reference:
                 try:
                     tx = PaymentTransaction.objects.select_for_update().get(reference=reference)
+                    print(f"[WEBHOOK] tx_fetch ref={reference} found=True")
                 except PaymentTransaction.DoesNotExist:
-                    print(f"Payment transaction {reference} not found")
+                    print(f"[WEBHOOK] tx_fetch ref={reference} found=False")
                 else:
                     # Idempotency: only apply once using completed_at as guard
                     if tx.completed_at is None:
@@ -1697,6 +1714,7 @@ def paystack_webhook(request):
                                 if not plan_obj:
                                     print(f"[{reference}] No matching subscription plan found; skipping activation.")
                                 else:
+                                    print(f"[WEBHOOK] activating ref={reference} plan_name={plan_obj.name if plan_obj else None} user={tx.user_id}")
                                     # Amount check (best-effort): compare GHS
                                     amount_pesewas = data.get('amount') or 0
                                     try:
@@ -1708,11 +1726,11 @@ def paystack_webhook(request):
                                     try:
                                         user_sub, created = UserSubscription.objects.get_or_create(user=tx.user)
                                         user_sub.upgrade_or_renew_subscription(plan_obj, tx)
-                                        print(f"[{reference}] Subscription activated for user {tx.user_id} on plan {plan_obj.name}")
+                                        print(f"[WEBHOOK] activated plan={plan_obj.name} user={tx.user_id}")
                                     except Exception as e:
-                                        print(f"[{reference}] Failed to activate subscription: {e}")
+                                        print(f"[WEBHOOK] failed to activate subscription ref={reference} err={e}")
                         except Exception as e:
-                            print(f"[{reference}] Atomic activation failed: {e}")
+                            print(f"[WEBHOOK] atomic activation failed ref={reference} err={e}")
                     else:
                         print(f"[{reference}] Webhook already processed (completed_at set). Skipping activation.")
                     
