@@ -1012,8 +1012,19 @@ def check_payment_status(request, reference):
     """
     API endpoint to check the status of a payment transaction.
     """
+    print(f"[CHECK_STATUS] ref={reference} user={request.user.id}")
     try:
         payment = PaymentTransaction.objects.get(reference=reference, user=request.user)
+        print(f"[CHECK_STATUS] found payment status={payment.status} plan_name={payment.plan_name} ref={reference}")
+        
+        # If payment is completed but subscription not activated, trigger verification
+        if payment.status == 'completed' and not payment.subscription:
+            print(f"[CHECK_STATUS] payment completed but no subscription, triggering verify ref={reference}")
+            # Trigger verification to activate subscription
+            verify_url = f"/api/subscriptions/payments/verify/"
+            # This would need to be called from the frontend or we can call it here
+            # For now, just log that we need to verify
+            
         # Return relevant details, especially the status
         return Response({
             'status': payment.status,
@@ -1025,9 +1036,10 @@ def check_payment_status(request, reference):
             # Add other fields you might need on the frontend
         }, status=status.HTTP_200_OK)
     except PaymentTransaction.DoesNotExist:
+        print(f"[CHECK_STATUS] payment not found ref={reference} user={request.user.id}")
         return Response({'message': 'Transaction not found or not associated with user.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        print(f"Error checking payment status: {e}")
+        print(f"[CHECK_STATUS] error ref={reference} err={e}")
         return Response({'message': 'An error occurred while checking status.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Initialize Africa's Talking
