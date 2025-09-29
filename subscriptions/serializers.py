@@ -38,6 +38,7 @@ class VerifyOTPAndSetPasswordSerializer(serializers.Serializer):
         return value
     
 class InitiatePaymentSerializer(serializers.Serializer):
+    plan_id = serializers.IntegerField(required=False)  # Add plan_id field
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=True,  min_value=Decimal('1.00'))
     phoneNumber = serializers.CharField(max_length=15, required=True) # Max length for phone numbers
     mobileOperator = serializers.ChoiceField(

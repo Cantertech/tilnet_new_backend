@@ -192,7 +192,20 @@ class InitiatePaymentAPIView(APIView):
         phone_number = validated_data['phoneNumber']
         mobile_operator = validated_data['mobileOperator']
         customer_name = customer_name 
-        plan_name = validated_data.get('plan_name') # Get plan name if added to serializer
+        
+        # Get plan name from plan_id or fallback to provided plan_name
+        plan_name = validated_data.get('plan_name')
+        plan_id = validated_data.get('plan_id')
+        if plan_id:
+            try:
+                from accounts.models import SubscriptionPlan
+                plan = SubscriptionPlan.objects.get(id=plan_id)
+                plan_name = plan.name
+                print(f"[INITIATE] resolved plan_name={plan_name} from plan_id={plan_id}")
+            except SubscriptionPlan.DoesNotExist:
+                print(f"[INITIATE] plan_id={plan_id} not found, using provided plan_name={plan_name}")
+        else:
+            print(f"[INITIATE] no plan_id provided, using plan_name={plan_name}")
 
         user = request.user # Authenticated user is available here
 
@@ -276,7 +289,8 @@ class InitiatePaymentAPIView(APIView):
                 "phone_number": phone_number,
                 "mobile_operator": mobile_operator,
                 "user_id": user.id,
-                "plan_name": plan_name
+                "plan_name": plan_name,
+                "plan_id": plan_id if plan_id else None
             }
         }
 
