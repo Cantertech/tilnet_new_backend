@@ -214,14 +214,25 @@ def get_rooms_left(request):
         # Fetch the subscription info for the logged-in user
         subscription = UserSubscription.objects.get(user=request.user)
 
-        # Calculate the number of projects left
+        # Calculate the number of rooms left
         rooms_left = subscription.three_d_views_limit - subscription.three_d_views_used
+        
+        # Ensure we don't return a negative number
+        if rooms_left < 0:
+            rooms_left = 0
+
+        # Debug logging
+        print(f"User: {request.user.username}")
+        print(f"3D Views Limit: {subscription.three_d_views_limit}")
+        print(f"3D Views Used: {subscription.three_d_views_used}")
+        print(f"Rooms Left: {rooms_left}")
 
         return JsonResponse({
             'rooms_left': rooms_left
         })
 
     except UserSubscription.DoesNotExist:
+        print(f"User {request.user.username} has no subscription")
         return JsonResponse({'error': 'Subscription not found.'}, status=404)
 
 

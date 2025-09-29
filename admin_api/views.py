@@ -4,7 +4,7 @@ from rest_framework import generics, viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, AllowAny # Permission to check if user is staff and active
 from rest_framework.decorators import api_view, permission_classes
-from django.db.models import Count, Sum
+from django.db.models import Count, Sum, Avg, Q
 from django.db.models.functions import TruncDate # For grouping by date
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission, Group
@@ -241,6 +241,299 @@ class AdminStatsView(generics.GenericAPIView):
         }
 
         return Response(stats_data)
+
+
+class AdminAnalyticsView(generics.GenericAPIView):
+    """
+    Enhanced API endpoint for comprehensive admin analytics and detailed insights.
+    Provides detailed customer analytics, revenue tracking, and usage patterns.
+    Requires the user to be an active staff member (IsAdminUser permission).
+    """
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, *args, **kwargs):
+        from subscriptions.models import PaymentTransaction
+        from manual_estimate.models import Customer
+        
+        # --- 1. Customer Analytics ---
+        total_customers = Customer.objects.count()
+        customers_with_projects = Customer.objects.filter(
+            estimate__isnull=False
+        ).distinct().count()
+
+        # Top customers by number of projects
+        top_customers = Customer.objects.annotate(
+            project_count=Count('estimate')
+        ).order_by('-project_count')[:10]
+
+        top_customers_data = [
+            {
+                'id': customer.id,
+                'name': customer.name,
+                'phone': customer.phone,
+                'location': customer.location,
+                'project_count': customer.project_count,
+                'created_at': customer.created_at
+            }
+            for customer in top_customers
+        ]
+
+        # --- 2. Revenue Analytics ---
+        # Total revenue from completed payments
+        total_revenue = PaymentTransaction.objects.filter(
+            status='completed'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        # Revenue by month (last 12 months)
+        revenue_by_month = PaymentTransaction.objects.filter(
+            status='completed',
+            created_at__gte=timezone.now() - timedelta(days=365)
+        ).annotate(
+            month=TruncDate('created_at')
+        ).values('month').annotate(
+            total=Sum('amount')
+        ).order_by('month')
+
+        revenue_monthly_data = [
+            {
+                'month': entry['month'].strftime('%Y-%m'),
+                'revenue': float(entry['total'])
+            }
+            for entry in revenue_by_month
+        ]
+
+        # --- 3. Project Analytics by Type ---
+        project_type_stats = Project.objects.values('project_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+
+        # --- 4. Subscription Analytics ---
+        active_subscriptions = UserSubscription.objects.filter(
+            is_active=True,
+            end_date__gt=timezone.now()
+        ).count()
+
+        subscription_plans_stats = UserSubscription.objects.values('plan__name').annotate(
+            count=Count('id'),
+            total_revenue=Sum('amount_paid')
+        ).order_by('-count')
+
+        # --- 5. Usage Analytics ---
+        # Users with most projects
+        top_users_by_projects = CustomUser.objects.annotate(
+            total_projects=Count('projects') + Count('estimate')
+        ).order_by('-total_projects')[:10]
+
+        top_users_data = [
+            {
+                'id': user.id,
+                'phone_number': user.phone_number,
+                'full_name': user.full_name,
+                'total_projects': user.total_projects,
+                'date_joined': user.date_joined,
+                'is_active': user.is_active
+            }
+            for user in top_users_by_projects
+        ]
+
+        # --- 6. Payment Analytics ---
+        payment_stats = PaymentTransaction.objects.aggregate(
+            total_payments=Count('id'),
+            successful_payments=Count('id', filter=Q(status='completed')),
+            failed_payments=Count('id', filter=Q(status='failed')),
+            pending_payments=Count('id', filter=Q(status='pending'))
+        )
+
+        # Average payment amount
+        avg_payment_amount = PaymentTransaction.objects.filter(
+            status='completed'
+        ).aggregate(avg=Avg('amount'))['avg'] or 0
+
+        # --- 7. Geographic Analytics ---
+        # Top locations by customers
+        top_locations = Customer.objects.exclude(
+            location__isnull=True
+        ).exclude(location='').values('location').annotate(
+            customer_count=Count('id')
+        ).order_by('-customer_count')[:10]
+
+        # --- Prepare Comprehensive Response ---
+        analytics_data = {
+            # Customer Analytics
+            'customer_analytics': {
+                'total_customers': total_customers,
+                'customers_with_projects': customers_with_projects,
+                'customer_engagement_rate': round((customers_with_projects / total_customers * 100), 2) if total_customers > 0 else 0,
+                'top_customers': top_customers_data,
+                'top_locations': list(top_locations)
+            },
+            
+            # Revenue Analytics
+            'revenue_analytics': {
+                'total_revenue': float(total_revenue),
+                'revenue_monthly_data': revenue_monthly_data,
+                'average_payment_amount': float(avg_payment_amount),
+                'payment_stats': payment_stats
+            },
+            
+            # Project Analytics
+            'project_analytics': {
+                'project_type_stats': list(project_type_stats),
+                'top_users_by_projects': top_users_data
+            },
+            
+            # Subscription Analytics
+            'subscription_analytics': {
+                'active_subscriptions': active_subscriptions,
+                'subscription_plans_stats': list(subscription_plans_stats)
+            }
+        }
+
+        return Response(analytics_data)
+
+
+class AdminReportsView(generics.GenericAPIView):
+    """
+    API endpoint for generating detailed reports for admin dashboard.
+    Provides exportable data and detailed breakdowns.
+    Requires the user to be an active staff member (IsAdminUser permission).
+    """
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, *args, **kwargs):
+        from subscriptions.models import PaymentTransaction
+        from manual_estimate.models import Customer
+        
+        report_type = request.GET.get('type', 'overview')
+        
+        if report_type == 'customers':
+            # Detailed customer report
+            customers = Customer.objects.select_related('user').annotate(
+                project_count=Count('estimate'),
+                total_estimate_value=Sum('estimate__grand_total')
+            ).order_by('-project_count')
+            
+            customers_data = [
+                {
+                    'id': customer.id,
+                    'name': customer.name,
+                    'phone': customer.phone,
+                    'location': customer.location,
+                    'project_count': customer.project_count,
+                    'total_estimate_value': float(customer.total_estimate_value or 0),
+                    'created_at': customer.created_at,
+                    'last_project_date': customer.estimate.order_by('-estimate_date').first().estimate_date if customer.estimate.exists() else None
+                }
+                for customer in customers
+            ]
+            
+            return Response({
+                'report_type': 'customers',
+                'total_customers': len(customers_data),
+                'data': customers_data
+            })
+            
+        elif report_type == 'revenue':
+            # Detailed revenue report
+            payments = PaymentTransaction.objects.select_related('user').filter(
+                status='completed'
+            ).order_by('-created_at')
+            
+            payments_data = [
+                {
+                    'id': payment.id,
+                    'reference': payment.reference,
+                    'amount': float(payment.amount),
+                    'customer_name': payment.customer_name,
+                    'phone_number': payment.phone_number,
+                    'email': payment.email,
+                    'plan_name': payment.plan_name,
+                    'created_at': payment.created_at,
+                    'completed_at': payment.completed_at,
+                    'user_id': payment.user.id,
+                    'user_phone': payment.user.phone_number
+                }
+                for payment in payments
+            ]
+            
+            return Response({
+                'report_type': 'revenue',
+                'total_payments': len(payments_data),
+                'total_revenue': sum(payment['amount'] for payment in payments_data),
+                'data': payments_data
+            })
+            
+        elif report_type == 'projects':
+            # Detailed projects report
+            projects = Project.objects.select_related('user').annotate(
+                total_cost=Sum('estimate_total')
+            ).order_by('-date')
+            
+            projects_data = [
+                {
+                    'id': project.id,
+                    'name': project.name,
+                    'estimate_number': project.estimate_number,
+                    'project_type': project.project_type,
+                    'status': project.status,
+                    'location': project.location,
+                    'customer_name': project.customer_name,
+                    'customer_phone': project.customer_phone,
+                    'total_cost': float(project.total_cost or 0),
+                    'date': project.date,
+                    'user_id': project.user.id,
+                    'user_phone': project.user.phone_number
+                }
+                for project in projects
+            ]
+            
+            return Response({
+                'report_type': 'projects',
+                'total_projects': len(projects_data),
+                'data': projects_data
+            })
+            
+        elif report_type == 'users':
+            # Detailed users report
+            users = CustomUser.objects.annotate(
+                project_count=Count('projects'),
+                estimate_count=Count('estimate'),
+                subscription_count=Count('subscription')
+            ).order_by('-date_joined')
+            
+            users_data = [
+                {
+                    'id': user.id,
+                    'phone_number': user.phone_number,
+                    'full_name': user.full_name,
+                    'email': user.email,
+                    'is_active': user.is_active,
+                    'is_staff': user.is_staff,
+                    'date_joined': user.date_joined,
+                    'last_login': user.last_login,
+                    'project_count': user.project_count,
+                    'estimate_count': user.estimate_count,
+                    'subscription_count': user.subscription_count,
+                    'has_active_subscription': user.subscription.filter(
+                        is_active=True,
+                        end_date__gt=timezone.now()
+                    ).exists()
+                }
+                for user in users
+            ]
+            
+            return Response({
+                'report_type': 'users',
+                'total_users': len(users_data),
+                'data': users_data
+            })
+            
+        else:
+            # Overview report
+            return Response({
+                'report_type': 'overview',
+                'message': 'Available report types: customers, revenue, projects, users'
+            })
 
 
 class UserViewSet(viewsets.ModelViewSet):

@@ -11,6 +11,8 @@ from .serializers import SuperuserTokenObtainPairSerializer
 # --- Import your admin views from the current app (admin_api) ---
 from .views import (
     AdminStatsView,
+    AdminAnalyticsView,
+    AdminReportsView,
     UserViewSet, # Assuming you are using the UserViewSet
     PermissionListView,
     GroupListView,
@@ -56,6 +58,14 @@ urlpatterns = [
     # Endpoint for aggregate statistics
     # Example URL: /api/admin/stats/
     path('stats/', AdminStatsView.as_view(), name='admin_stats'),
+
+    # Endpoint for comprehensive analytics
+    # Example URL: /api/admin/analytics/
+    path('analytics/', AdminAnalyticsView.as_view(), name='admin_analytics'),
+
+    # Endpoint for detailed reports
+    # Example URL: /api/admin/reports/?type=customers
+    path('reports/', AdminReportsView.as_view(), name='admin_reports'),
 
     # Endpoint to list all available Django Permissions
     # Example URL: /api/admin/permissions/
