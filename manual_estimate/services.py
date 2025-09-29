@@ -17,8 +17,10 @@ except AttributeError:
 
 def calculate_and_update_estimate_fields(estimate_instance: Estimate):
     """
-    Calculates derived fields for an Estimate instance (total_area_sq_m, profit_per_sq_meter)
-    and saves them back to the model.
+    Calculates derived fields for an Estimate instance (total_area_sq_m, labour_per_sq_meter, total_labour_cost)
+    based on the new charge type logic:
+    - Total Labour Cost = charge_amount * total_area (for per unit) or charge_amount (for flat)
+    - Cost per Meter = charge_amount (for per meter) or charge_amount / total_area (for flat)
     This should be called *after* nested RoomArea objects have been updated.
     """
     print(f"--- Calculating and updating fields for Estimate ID: {estimate_instance.id} ---")
@@ -31,7 +33,7 @@ def calculate_and_update_estimate_fields(estimate_instance: Estimate):
     print(f"Calculated total_area_sq_m: {estimate_instance.total_area_sq_m}")
 
 
-    # 2. Recalculate profit_per_sq_meter
+    # 2. Recalculate total_labour_cost and labour_per_sq_meter based on new logic
     total_labour_c = Decimal(0)
     calculated_profit_per_sq_m = Decimal(0)
     profit_type_input = estimate_instance.profit_type
@@ -39,24 +41,26 @@ def calculate_and_update_estimate_fields(estimate_instance: Estimate):
     total_floor_area = sum(room.floor_area for room in estimate_instance.rooms.all()) if estimate_instance.rooms.exists() else Decimal('0.00')
     total_wall_area = sum(room.wall_area for room in estimate_instance.rooms.all()) if estimate_instance.rooms.exists() else Decimal('0.00')
     total_area = total_wall_area + total_floor_area
-    if profit_type_input == 'fixed_amount':
-        if estimate_instance.total_area_sq_m > 0:
-            total_labour_c = profit_value_input
-            calculated_profit_per_sq_m = profit_value_input / estimate_instance.total_area_sq_m
-        else:
-            # If total_area_sq_m is 0 for a fixed_amount profit, profit_per_sq_meter should be 0
-            calculated_profit_per_sq_m = Decimal(0)
+    
+    # Calculate Total Labour Cost (Charge Type) based on profit type
+    if profit_type_input == 'flat_amount':
+        total_labour_c = profit_value_input
+        # Cost per meter for flat amount: divide by total area
+        calculated_profit_per_sq_m = profit_value_input / total_area if total_area > 0 else Decimal(0)
     elif profit_type_input == 'per_sq_meter':
-        
         calculated_profit_per_sq_m = profit_value_input
-        total_labour_c = total_area * calculated_profit_per_sq_m
+        total_labour_c = total_area * profit_value_input
     elif profit_type_input == 'per_sq_yard':
+        # Convert yards to meters for cost per meter calculation
         calculated_profit_per_sq_m = profit_value_input / SQ_YARD_TO_SQ_METER_CONVERSION
-        total_labour_c = total_area * calculated_profit_per_sq_m
+        # Convert area to yards for total labour cost calculation
+        area_in_sq_yards = total_area / SQ_YARD_TO_SQ_METER_CONVERSION
+        total_labour_c = area_in_sq_yards * profit_value_input
 
     estimate_instance.labour_per_sq_meter = calculated_profit_per_sq_m
-    print(f"Calculated profit_per_sq_meter: {estimate_instance.labour_per_sq_meter}")
+    print(f"Calculated labour_per_sq_meter: {estimate_instance.labour_per_sq_meter}")
     estimate_instance.total_labour_cost = total_labour_c
+    print(f"Calculated total_labour_cost: {estimate_instance.total_labour_cost}")
     # 3. Save the updated estimate instance
     estimate_instance.save(update_fields=[
         'total_area_sq_m',
