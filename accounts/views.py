@@ -1575,10 +1575,29 @@ def admin_subscription_plans(request):
             return Response(serializer.data)
         
         elif request.method == 'POST':
-            serializer = SubscriptionPlanSerializer(data=request.data)
+            # Make creation idempotent on plan name to avoid duplicate inserts on double submit
+            data = request.data.copy()
+            name = data.get('name')
+            if not name:
+                return Response({"name": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+
+            existing = SubscriptionPlan.objects.filter(name=name).first()
+            if existing:
+                # Optionally update existing with provided fields
+                fields = ['price', 'project_limit', 'three_d_view_limit', 'manual_estimate_limit', 'duration_in_days']
+                updated = False
+                for f in fields:
+                    if f in data and data.get(f) is not None and data.get(f) != '':
+                        setattr(existing, f, data.get(f))
+                        updated = True
+                if updated:
+                    existing.save()
+                return Response(SubscriptionPlanSerializer(existing).data, status=status.HTTP_200_OK)
+
+            serializer = SubscriptionPlanSerializer(data=data)
             if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                plan = serializer.save()
+                return Response(SubscriptionPlanSerializer(plan).data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
