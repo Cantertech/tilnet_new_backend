@@ -1462,11 +1462,11 @@ def admin_usage_trends(request):
             select={'day': 'date(date_joined)'}
         ).values('day').annotate(count=Count('id')).order_by('day')
         
-        # Monthly subscription trends
+        # Monthly subscription trends (using start_date instead of created_at)
         monthly_subscriptions = UserSubscription.objects.filter(
-            created_at__gte=thirty_days_ago
+            start_date__gte=thirty_days_ago
         ).extra(
-            select={'month': 'date_trunc(\'month\', created_at)'}
+            select={'month': 'date_trunc(\'month\', start_date)'}
         ).values('month').annotate(count=Count('id')).order_by('month')
         
         return Response({
