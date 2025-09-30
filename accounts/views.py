@@ -1,43 +1,35 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import re
 import traceback
 from urllib import request
 from rest_framework import status
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
-from rest_framework.decorators import api_view,permission_classes
+from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth.models import User
+from django.utils import timezone
 
-from subscriptions.models  import OTP
+from subscriptions.models import OTP
 from .models import AppVersion, CustomUser, PasswordResetCode, VerificationCode, use_feature_if_allowed
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.db import models
 from django.core.mail import send_mail
-from rest_framework import status
-from .serializers import ContactMessageSerializer, CustomUserSerializer, UserSubscriptionSerializer, VerifyNewUserOTPSerializer, CustomPackageSerializer
+from .serializers import ContactMessageSerializer, CustomUserSerializer, UserSubscriptionSerializer, VerifyNewUserOTPSerializer, CustomPackageSerializer, SubscriptionPlanSerializer
 from django.contrib.auth.tokens import default_token_generator
 from django.http import JsonResponse
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth.models import User
-from .models import UserProfile, SubscriptionPlan, UserSubscription, CustomPackage
-from .serializers import ContactMessageSerializer, SubscriptionPlanSerializer
-from django.utils.timezone import now
+from .models import UserProfile, SubscriptionPlan, UserSubscription, CustomPackage, Referral
 from django.shortcuts import get_object_or_404, render
 from django.db.models import Count, Q, Sum
-from .models import Referral  
 from django.http import JsonResponse
 import random
 from django.contrib.auth.hashers import make_password
-from .models import UserProfile,Referral  
-import random
-from accounts.serializers import UserSubscription  
+# Removed incorrect import  
 import requests
-from django.http import JsonResponse
 from django.conf import settings
-from .utils import generate_verification_code,  send_sms_africastalking
+from .utils import generate_verification_code, send_sms_africastalking
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
