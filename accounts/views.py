@@ -1596,8 +1596,17 @@ def admin_subscription_plans(request):
 
             serializer = SubscriptionPlanSerializer(data=data)
             if serializer.is_valid():
-                plan = serializer.save()
-                return Response(SubscriptionPlanSerializer(plan).data, status=status.HTTP_201_CREATED)
+                try:
+                    plan = serializer.save()
+                    return Response(SubscriptionPlanSerializer(plan).data, status=status.HTTP_201_CREATED)
+                except Exception as db_error:
+                    # Handle database constraint errors gracefully
+                    if 'duplicate key value violates unique constraint' in str(db_error):
+                        # Try to get the existing plan by name and return it
+                        existing_plan = SubscriptionPlan.objects.filter(name=name).first()
+                        if existing_plan:
+                            return Response(SubscriptionPlanSerializer(existing_plan).data, status=status.HTTP_200_OK)
+                    return Response({"error": f"Database error: {str(db_error)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
