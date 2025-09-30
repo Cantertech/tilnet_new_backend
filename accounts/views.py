@@ -182,18 +182,14 @@ def check_version(request):
 @permission_classes([IsAuthenticated])
 def get_projects_left(request):
     try:
-        # Fetch the subscription info for the logged-in user
         subscription = UserSubscription.objects.get(user=request.user)
-
-        # Calculate the number of projects left
         projects_left = subscription.project_limit - subscription.projects_created
-
-        return JsonResponse({
-            'projects_left': projects_left
-        })
-
+        if projects_left < 0:
+            projects_left = 0
+        return JsonResponse({'projects_left': projects_left})
     except UserSubscription.DoesNotExist:
-        return JsonResponse({'error': 'Subscription not found.'}, status=404)
+        # Return safe default instead of 404 to avoid breaking frontend
+        return JsonResponse({'projects_left': 0, 'note': 'No subscription found'}, status=200)
     
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1573,7 +1569,8 @@ def admin_subscription_plans(request):
             return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
         
         if request.method == 'GET':
-            plans = SubscriptionPlan.objects.all().order_by('-created_at')
+            # SubscriptionPlan has no created_at; order by name instead
+            plans = SubscriptionPlan.objects.all().order_by('name')
             serializer = SubscriptionPlanSerializer(plans, many=True)
             return Response(serializer.data)
         
@@ -1612,20 +1609,20 @@ def admin_assign_plan(request):
         subscription, created = UserSubscription.objects.get_or_create(
             user=user,
             defaults={
-                'subscription_plan': plan,
+                'plan': plan,
                 'project_limit': plan.project_limit,
-                'three_d_views_limit': plan.three_d_views_limit,
+                'three_d_views_limit': plan.three_d_view_limit,
                 'manual_estimate_limit': plan.manual_estimate_limit,
-                'end_date': timezone.now() + timedelta(days=plan.duration_days),
+                'end_date': timezone.now() + timedelta(days=plan.duration_in_days),
             }
         )
         
         if not created:
-            subscription.subscription_plan = plan
+            subscription.plan = plan
             subscription.project_limit = plan.project_limit
-            subscription.three_d_views_limit = plan.three_d_views_limit
+            subscription.three_d_views_limit = plan.three_d_view_limit
             subscription.manual_estimate_limit = plan.manual_estimate_limit
-            subscription.end_date = timezone.now() + timedelta(days=plan.duration_days)
+            subscription.end_date = timezone.now() + timedelta(days=plan.duration_in_days)
             subscription.save()
         
         return Response({
