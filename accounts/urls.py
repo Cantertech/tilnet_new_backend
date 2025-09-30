@@ -1,7 +1,7 @@
 from django.urls import path
 from . import views
 from .views import (
-    Room3DViewAccessAPIView, VerifyNewUserOTPView, check_subscription, check_version, get_manual_left, get_rooms_left, get_user_details, initialize_payment, register_user,update_password,password_reset, login_user, list_subscription_plans, update_subscription,send_message,GetReferralCodeView,get_plan_details, update_user_details,get_projects_left
+    Room3DViewAccessAPIView, VerifyNewUserOTPView, check_subscription, check_version, get_manual_left, get_rooms_left, get_user_details, initialize_payment, register_user,update_password,password_reset, login_user, list_subscription_plans, update_subscription,send_message,GetReferralCodeView,get_plan_details, update_user_details,get_projects_left, CustomPackageView, admin_user_stats, admin_usage_trends, admin_user_list, admin_subscription_plans, admin_assign_plan
 )
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -32,4 +32,13 @@ urlpatterns = [
     path('manual_left/',get_manual_left, name='get_manual_left'),
     path('verify-new-user-otp/', VerifyNewUserOTPView.as_view(), name='verify-new-user-otp'),
     path('api/check-version/', check_version, name='check-version'),
+    # Custom package endpoints
+    path('custom-package/', CustomPackageView.as_view(), name='custom_package'),
+    
+    # Admin Dashboard endpoints
+    path('admin/stats/', admin_user_stats, name='admin_user_stats'),
+    path('admin/trends/', admin_usage_trends, name='admin_usage_trends'),
+    path('admin/users/', admin_user_list, name='admin_user_list'),
+    path('admin/plans/', admin_subscription_plans, name='admin_subscription_plans'),
+    path('admin/assign-plan/', admin_assign_plan, name='admin_assign_plan'),
 ]

@@ -52,6 +52,7 @@ class UserProfile(models.Model):
         default='Unpaid'
     )
     points = models.IntegerField(default=0)  # Field to store the total points
+    current_session_id = models.CharField(max_length=64, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         if not self.referral_code:
@@ -158,13 +159,14 @@ class UserSubscription(models.Model):
         self.save()
 
     def can_use_feature(self, feature_type):
-        """Check if the user can use a specific feature based on their subscription limits."""
+        """Check if the user can use a specific feature based on effective limits (overrides or plan)."""
+        limits = get_effective_limits(self.user)
         if feature_type == 'estimate':
-            return self.projects_created < self.project_limit
+            return self.projects_created < limits['project_limit']
         elif feature_type == 'room_view':
-            return self.three_d_views_used < self.three_d_views_limit
+            return self.three_d_views_used < limits['three_d_views_limit']
         elif feature_type == 'manual_estimate':
-            return self.manual_estimates_used < self.manual_estimate_limit
+            return self.manual_estimates_used < limits['manual_estimate_limit']
         return False
 
     def record_feature_usage(self, feature_type):
@@ -210,7 +212,8 @@ def get_projects_left(user):
     
     try:
         subscription = user.subscription
-        projects_left = subscription.plan.project_limit - subscription.projects_created
+        limits = get_effective_limits(user)
+        projects_left = limits['project_limit'] - subscription.projects_created
 
         if projects_left < 0:
             projects_left = 0  # Ensure we don't return a negative number
@@ -256,6 +259,47 @@ class ReferralReward(models.Model):
 
     def __str__(self):
         return f"Reward for {self.referrer.username} from {self.referee.username}"
+
+
+# --- Custom per-user package overrides ---
+class CustomPackage(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='custom_package')
+    project_limit_override = models.PositiveIntegerField(null=True, blank=True)
+    three_d_views_limit_override = models.PositiveIntegerField(null=True, blank=True)
+    manual_estimate_limit_override = models.PositiveIntegerField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def is_effective(self):
+        if not self.is_active:
+            return False
+        if self.end_date and self.end_date <= timezone.now():
+            return False
+        return True
+
+    def __str__(self):
+        return f"CustomPackage for {self.user_id} (active={self.is_active})"
+
+
+def get_effective_limits(user):
+    """Return a dict of effective limits using CustomPackage override if active, else subscription limits."""
+    # Defaults from subscription
+    sub = getattr(user, 'subscription', None)
+    base = {
+        'project_limit': sub.project_limit if sub else 0,
+        'three_d_views_limit': sub.three_d_views_limit if sub else 0,
+        'manual_estimate_limit': sub.manual_estimate_limit if sub else 0,
+    }
+    pkg = getattr(user, 'custom_package', None)
+    if pkg and pkg.is_effective():
+        return {
+            'project_limit': pkg.project_limit_override if pkg.project_limit_override is not None else base['project_limit'],
+            'three_d_views_limit': pkg.three_d_views_limit_override if pkg.three_d_views_limit_override is not None else base['three_d_views_limit'],
+            'manual_estimate_limit': pkg.manual_estimate_limit_override if pkg.manual_estimate_limit_override is not None else base['manual_estimate_limit'],
+        }
+    return base
 
 
 class CustomUserManager(BaseUserManager):

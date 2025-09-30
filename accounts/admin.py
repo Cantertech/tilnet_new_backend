@@ -1,7 +1,7 @@
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import CustomUser, UserProfile
+from .models import CustomUser, UserProfile, CustomPackage
 
 @admin.register(CustomUser)
 class CustomUserAdmin(BaseUserAdmin):
@@ -52,4 +52,19 @@ from .models import AppVersion
 @admin.register(AppVersion)
 class AppVersionAdmin(admin.ModelAdmin):
     list_display = ('platform', 'latest_version', 'force_update', 'updated_at')
+
+
+@admin.register(CustomPackage)
+class CustomPackageAdmin(admin.ModelAdmin):
+    list_display = (
+        'user',
+        'project_limit_override',
+        'three_d_views_limit_override',
+        'manual_estimate_limit_override',
+        'end_date',
+        'is_active',
+        'updated_at',
+    )
+    list_filter = ('is_active',)
+    search_fields = ('user__phone_number', 'user__email', 'user__username')
 

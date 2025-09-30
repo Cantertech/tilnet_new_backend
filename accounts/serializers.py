@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import CustomUser, UserProfile, SubscriptionPlan, UserSubscription
+from .models import CustomUser, UserProfile, SubscriptionPlan, UserSubscription, CustomPackage
 from django.utils.timezone import now
 from rest_framework.exceptions import ValidationError
 
@@ -162,3 +162,16 @@ class ContactMessageSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=100)
     email = serializers.EmailField()
     message = serializers.CharField(max_length=1000)
+
+
+class CustomPackageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomPackage
+        fields = (
+            'project_limit_override',
+            'three_d_views_limit_override',
+            'manual_estimate_limit_override',
+            'end_date',
+            'is_active',
+            'notes',
+        )

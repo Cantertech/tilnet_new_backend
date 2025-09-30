@@ -15,18 +15,18 @@ from django.contrib.auth import authenticate
 from django.db import models
 from django.core.mail import send_mail
 from rest_framework import status
-from .serializers import ContactMessageSerializer, CustomUserSerializer, UserSubscriptionSerializer, VerifyNewUserOTPSerializer
+from .serializers import ContactMessageSerializer, CustomUserSerializer, UserSubscriptionSerializer, VerifyNewUserOTPSerializer, CustomPackageSerializer
 from django.contrib.auth.tokens import default_token_generator
 from django.http import JsonResponse
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.models import User
-from .models import UserProfile, SubscriptionPlan, UserSubscription
+from .models import UserProfile, SubscriptionPlan, UserSubscription, CustomPackage
 from .serializers import ContactMessageSerializer, SubscriptionPlanSerializer
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404, render
-from django.db.models import Count
+from django.db.models import Count, Q, Sum
 from .models import Referral  
 from django.http import JsonResponse
 import random
@@ -45,6 +45,39 @@ from rest_framework import status, permissions
 from .serializers import (
     VerifyNewUserOTPSerializer # Import the new serializer
 )
+
+
+class CustomPackageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        """Fetch custom package for a user by id or phone/email query."""
+        user_id = request.query_params.get('user_id')
+        q = request.query_params.get('q')
+        user = None
+        if user_id:
+            user = get_object_or_404(User, id=user_id)
+        elif q:
+            user = User.objects.filter(models.Q(phone_number__icontains=q) | models.Q(email__icontains=q) | models.Q(username__icontains=q)).first()
+            if not user:
+                return Response({"detail": "User not found"}, status=404)
+        else:
+            return Response({"detail": "Provide user_id or q"}, status=400)
+
+        pkg, _ = CustomPackage.objects.get_or_create(user=user)
+        return Response(CustomPackageSerializer(pkg).data)
+
+    def post(self, request, *args, **kwargs):
+        """Create/update a user's custom package by user_id."""
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({"detail": "user_id is required"}, status=400)
+        user = get_object_or_404(User, id=user_id)
+        pkg, _ = CustomPackage.objects.get_or_create(user=user)
+        serializer = CustomPackageSerializer(instance=pkg, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 User = get_user_model()
@@ -478,7 +511,13 @@ def register_user(request):
             except SubscriptionPlan.DoesNotExist:
                 return Response({"error": "Free plan does not exist. Please create a 'Free Plan' in the database."}, status=status.HTTP_400_BAD_REQUEST)
 
+            # Issue tokens with a per-login session id (sid) and store it on profile
+            import uuid
+            session_id = uuid.uuid4().hex
+            user_profile.current_session_id = session_id
+            user_profile.save(update_fields=['current_session_id'])
             refresh = RefreshToken.for_user(user)
+            refresh['sid'] = session_id
             return Response({
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
@@ -668,11 +707,23 @@ def login_user(request):
     
 
     if user and user.check_password(password):
+        # Create new session id and embed into tokens
+        import uuid
+        session_id = uuid.uuid4().hex
+        try:
+            if hasattr(user, 'userprofile'):
+                user.userprofile.current_session_id = session_id
+                user.userprofile.save(update_fields=['current_session_id'])
+        except Exception as e:
+            print(f"Warning: failed to set current_session_id: {e}")
         refresh = RefreshToken.for_user(user)
+        refresh['sid'] = session_id
         return Response({'refresh': str(refresh), 'access': str(refresh.access_token),"user": {
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
+                "is_staff": user.is_staff,
+                "is_superuser": user.is_superuser,
             }}, status=status.HTTP_200_OK)
 
     return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1351,3 +1402,244 @@ def verify_phone_number(request):
         traceback.print_exc() # Print full traceback for debugging
         return Response({"error": "An internal error occurred during verification."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+# Admin Dashboard API Endpoints
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_user_stats(request):
+    """Get comprehensive user statistics for admin dashboard"""
+    try:
+        # Check if user is admin (you can customize this check)
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Total users
+        total_users = CustomUser.objects.count()
+        
+        # Active users (logged in within last 30 days)
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        active_users = CustomUser.objects.filter(last_login__gte=thirty_days_ago).count()
+        
+        # Users with active subscriptions
+        active_subscriptions = UserSubscription.objects.filter(
+            end_date__gte=timezone.now()
+        ).count()
+        
+        # Total projects created
+        total_projects = UserSubscription.objects.aggregate(
+            total=Sum('projects_created')
+        )['total'] or 0
+        
+        # Total 3D views used
+        total_3d_views = UserSubscription.objects.aggregate(
+            total=Sum('three_d_views_used')
+        )['total'] or 0
+        
+        # Total manual estimates used
+        total_manual_estimates = UserSubscription.objects.aggregate(
+            total=Sum('manual_estimates_used')
+        )['total'] or 0
+        
+        # Custom packages count
+        custom_packages = CustomPackage.objects.filter(is_active=True).count()
+        
+        return Response({
+            'total_users': total_users,
+            'active_users': active_users,
+            'active_subscriptions': active_subscriptions,
+            'total_projects': total_projects,
+            'total_3d_views': total_3d_views,
+            'total_manual_estimates': total_manual_estimates,
+            'custom_packages': custom_packages,
+        })
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_usage_trends(request):
+    """Get usage trends over time for charts"""
+    try:
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get last 30 days of data
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        
+        # Daily user registrations
+        daily_registrations = CustomUser.objects.filter(
+            date_joined__gte=thirty_days_ago
+        ).extra(
+            select={'day': 'date(date_joined)'}
+        ).values('day').annotate(count=Count('id')).order_by('day')
+        
+        # Monthly subscription trends
+        monthly_subscriptions = UserSubscription.objects.filter(
+            created_at__gte=thirty_days_ago
+        ).extra(
+            select={'month': 'date_trunc(\'month\', created_at)'}
+        ).values('month').annotate(count=Count('id')).order_by('month')
+        
+        return Response({
+            'daily_registrations': list(daily_registrations),
+            'monthly_subscriptions': list(monthly_subscriptions),
+        })
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_user_list(request):
+    """Get paginated list of users with their stats"""
+    try:
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 20))
+        search = request.GET.get('search', '')
+        
+        # Build query
+        users_query = CustomUser.objects.all()
+        if search:
+            users_query = users_query.filter(
+                Q(username__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone_number__icontains=search)
+            )
+        
+        # Get total count
+        total_count = users_query.count()
+        
+        # Paginate
+        start = (page - 1) * page_size
+        end = start + page_size
+        users = users_query[start:end]
+        
+        # Build response data
+        user_data = []
+        for user in users:
+            try:
+                subscription = UserSubscription.objects.get(user=user)
+                custom_package = CustomPackage.objects.filter(user=user, is_active=True).first()
+                
+                user_data.append({
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'phone_number': user.phone_number,
+                    'date_joined': user.date_joined,
+                    'last_login': user.last_login,
+                    'is_active': user.is_active,
+                    'projects_created': subscription.projects_created,
+                    'three_d_views_used': subscription.three_d_views_used,
+                    'manual_estimates_used': subscription.manual_estimates_used,
+                    'subscription_active': subscription.end_date > timezone.now() if subscription.end_date else False,
+                    'custom_package': {
+                        'project_limit_override': custom_package.project_limit_override,
+                        'three_d_views_limit_override': custom_package.three_d_views_limit_override,
+                        'manual_estimate_limit_override': custom_package.manual_estimate_limit_override,
+                        'end_date': custom_package.end_date,
+                        'is_active': custom_package.is_active,
+                    } if custom_package else None,
+                })
+            except UserSubscription.DoesNotExist:
+                user_data.append({
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'phone_number': user.phone_number,
+                    'date_joined': user.date_joined,
+                    'last_login': user.last_login,
+                    'is_active': user.is_active,
+                    'projects_created': 0,
+                    'three_d_views_used': 0,
+                    'manual_estimates_used': 0,
+                    'subscription_active': False,
+                    'custom_package': None,
+                })
+        
+        return Response({
+            'users': user_data,
+            'total_count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total_count + page_size - 1) // page_size,
+        })
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def admin_subscription_plans(request):
+    """Get all subscription plans or create a new one"""
+    try:
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        
+        if request.method == 'GET':
+            plans = SubscriptionPlan.objects.all().order_by('-created_at')
+            serializer = SubscriptionPlanSerializer(plans, many=True)
+            return Response(serializer.data)
+        
+        elif request.method == 'POST':
+            serializer = SubscriptionPlanSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_assign_plan(request):
+    """Assign a subscription plan to a user"""
+    try:
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        
+        user_id = request.data.get('user_id')
+        plan_id = request.data.get('plan_id')
+        
+        if not user_id or not plan_id:
+            return Response({"error": "user_id and plan_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            plan = SubscriptionPlan.objects.get(id=plan_id)
+        except (CustomUser.DoesNotExist, SubscriptionPlan.DoesNotExist):
+            return Response({"error": "User or plan not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Create or update user subscription
+        subscription, created = UserSubscription.objects.get_or_create(
+            user=user,
+            defaults={
+                'subscription_plan': plan,
+                'project_limit': plan.project_limit,
+                'three_d_views_limit': plan.three_d_views_limit,
+                'manual_estimate_limit': plan.manual_estimate_limit,
+                'end_date': timezone.now() + timedelta(days=plan.duration_days),
+            }
+        )
+        
+        if not created:
+            subscription.subscription_plan = plan
+            subscription.project_limit = plan.project_limit
+            subscription.three_d_views_limit = plan.three_d_views_limit
+            subscription.manual_estimate_limit = plan.manual_estimate_limit
+            subscription.end_date = timezone.now() + timedelta(days=plan.duration_days)
+            subscription.save()
+        
+        return Response({
+            "message": f"Plan '{plan.name}' assigned to user '{user.username}'",
+            "subscription": UserSubscriptionSerializer(subscription).data
+        })
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
