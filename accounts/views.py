@@ -200,9 +200,23 @@ def get_manual_left(request):
 
         # Calculate the number of projects left
         manual_estimate_left = subscription.manual_estimate_limit - subscription.manual_estimates_used
+        
+        # Debug logging
+        print(f"User: {request.user.username}")
+        print(f"Plan: {subscription.plan.name if subscription.plan else 'No plan'}")
+        print(f"Manual Estimate Limit (Subscription): {subscription.manual_estimate_limit}")
+        print(f"Manual Estimate Limit (Plan): {subscription.plan.manual_estimate_limit if subscription.plan else 'N/A'}")
+        print(f"Manual Estimates Used: {subscription.manual_estimates_used}")
+        print(f"Manual Estimates Left: {manual_estimate_left}")
 
         return JsonResponse({
-            'manual_estimate_left': manual_estimate_left
+            'manual_estimate_left': manual_estimate_left,
+            'debug_info': {
+                'plan_name': subscription.plan.name if subscription.plan else 'No plan',
+                'subscription_limit': subscription.manual_estimate_limit,
+                'plan_limit': subscription.plan.manual_estimate_limit if subscription.plan else None,
+                'used': subscription.manual_estimates_used,
+            }
         })
 
     except UserSubscription.DoesNotExist:
@@ -234,9 +248,13 @@ def get_rooms_left(request):
     try:
         # Fetch the subscription info for the logged-in user
         subscription = UserSubscription.objects.get(user=request.user)
+        
+        # Get effective limits (includes custom package overrides)
+        from accounts.models import get_effective_limits
+        effective_limits = get_effective_limits(request.user)
 
-        # Calculate the number of rooms left
-        rooms_left = subscription.three_d_views_limit - subscription.three_d_views_used
+        # Calculate the number of rooms left using EFFECTIVE limits
+        rooms_left = effective_limits['three_d_views_limit'] - subscription.three_d_views_used
         
         # Ensure we don't return a negative number
         if rooms_left < 0:
@@ -244,12 +262,20 @@ def get_rooms_left(request):
 
         # Debug logging
         print(f"User: {request.user.username}")
-        print(f"3D Views Limit: {subscription.three_d_views_limit}")
+        print(f"3D Views Limit (Subscription): {subscription.three_d_views_limit}")
+        print(f"3D Views Limit (Plan): {subscription.plan.three_d_view_limit if subscription.plan else 'N/A'}")
+        print(f"3D Views Limit (EFFECTIVE): {effective_limits['three_d_views_limit']}")
         print(f"3D Views Used: {subscription.three_d_views_used}")
         print(f"Rooms Left: {rooms_left}")
 
         return JsonResponse({
-            'rooms_left': rooms_left
+            'rooms_left': rooms_left,
+            'debug_info': {
+                'subscription_limit': subscription.three_d_views_limit,
+                'plan_limit': subscription.plan.three_d_view_limit if subscription.plan else None,
+                'effective_limit': effective_limits['three_d_views_limit'],
+                'used': subscription.three_d_views_used,
+            }
         })
 
     except UserSubscription.DoesNotExist:
