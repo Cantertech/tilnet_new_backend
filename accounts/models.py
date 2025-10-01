@@ -110,7 +110,7 @@ class UserSubscription(models.Model):
     @property
     def check_and_deactivate_trial(self):
         """Deactivate trial if the 7-day free period is over."""
-        if self.is_trial_active and now() >= self.start_date + timedelta(days=7):
+        if self.is_trial_active and timezone.now() >= self.start_date + timedelta(days=7):
             self.is_trial_active = False
             self.payment_status = 'Pending'  # Set payment status to pending after trial ends
             self.save()
@@ -120,7 +120,7 @@ class UserSubscription(models.Model):
         """Returns True if the user has a valid subscription (paid or trial active)."""
         if self.is_trial_active:
             return True
-        if self.payment_status == 'Paid' and self.end_date > now():
+        if self.payment_status == 'Paid' and self.end_date > timezone.now():
             return True
         return False
 
@@ -181,7 +181,7 @@ class UserSubscription(models.Model):
 
     def has_access_to_free(self):
         """Check if the user has access to Quick Estimate based on active subscription and validity period."""
-        return self.has_active_subscription and self.end_date > now()
+        return self.has_active_subscription and self.end_date > timezone.now()
 
 
 def use_feature_if_allowed(user, feature_type):
