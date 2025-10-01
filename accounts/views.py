@@ -497,8 +497,8 @@ def register_user(request):
                     UserSubscription.objects.create(
                         user=user,
                         plan=plan,
-                        start_date=now(),
-                        end_date=now() + timedelta(days=plan.duration_in_days),
+                        start_date=timezone.now(),
+                        end_date=timezone.now() + timedelta(days=plan.duration_in_days),
                         payment_status='Pending'
                     )
                 except SubscriptionPlan.DoesNotExist:
@@ -516,8 +516,8 @@ def register_user(request):
                 UserSubscription.objects.create(
                     user=user,
                     plan=free_plan,
-                    start_date=now(),
-                    end_date=now() + timedelta(days=free_plan.duration_in_days),
+                    start_date=timezone.now(),
+                    end_date=timezone.now() + timedelta(days=free_plan.duration_in_days),
                     is_active=True,
                     payment_status='Pending',
                     is_trial_active=True,
